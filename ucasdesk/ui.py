@@ -527,8 +527,12 @@ class Window(QMainWindow):
 
     def start_job(self, module, title, program, args, payload):
         if module in ('lecture', 'selection', 'mooc'):
+            from .portable import ready
             entry = next(m for m in read_json(ROOT / 'modules.json', []) if m['id'] == module)
-            if not (ROOT / entry['path']).is_dir():
+            if not ready(ROOT, entry):
+                if (ROOT / 'runtime/modules-downloads.json').is_file():
+                    self.nav.setCurrentRow(7)
+                    raise ValueError('请在“设置与更新”点击“一键启用讲座预约与抢课”。无需安装开发环境，完成后返回此页面启动任务。')
                 command = 'python scripts/setup.py' + (' --with-external-modules' if entry.get('external_opt_in') else '')
                 raise ValueError(f'此模块尚未安装。请按 README 执行：{command}')
             if module == 'mooc' and not (ROOT / 'adapters/mooc_helpers.mjs').is_file():
@@ -758,8 +762,17 @@ class Window(QMainWindow):
             from coursesystem.state import load_state
             saved = load_state()
             saved_db = saved.get('db_path')
-            if saved_db and Path(saved_db).is_file():
-                database = Path(saved_db)
+            if saved_db:
+                candidate = Path(saved_db)
+                if not candidate.is_absolute():
+                    candidate = directory / candidate
+                elif candidate.parent.name == 'planner' and candidate.parent.parent.name == 'data':
+                    # Migrate old in-app absolute paths after moving/unzipping the app.
+                    relocated = directory / candidate.name
+                    if relocated.is_file():
+                        candidate = relocated
+                if candidate.is_file():
+                    database = candidate
             self.planner = IntegratedPlanner(CourseDatabase(database), self.enrollment, directory)
             if not saved.get('ui'):
                 campus_index = self.planner.campus_combo.findData('H')
@@ -1029,6 +1042,12 @@ class Window(QMainWindow):
 
     def build_settings(self):
         layout = self.page('设置与更新', '模块来源、固定版本和维护接口都保留在本地，便于后续升级。')
+        if (ROOT / 'runtime/modules-downloads.json').is_file():
+            group = QGroupBox('便携版组件')
+            content = QVBoxLayout(group)
+            content.addWidget(label('Python、Node 和基础功能已内置。讲座预约与抢课的外部模块由下方按钮直接从原作者仓库获取；完成后即可使用，无需命令行。', 'muted'))
+            content.addWidget(button('一键启用讲座预约与抢课', self.install_portable_modules, True))
+            layout.addWidget(group)
         self.module_table = table(['模块', '上游最后提交', '固定提交', '本地能力'])
         modules = read_json(ROOT / 'modules.json', [])
         self.module_table.setRowCount(len(modules))
@@ -1049,6 +1068,13 @@ class Window(QMainWindow):
         form.addLayout(row(button('保存设置', self.save_settings), button('复制手机面板地址', self.copy_mobile), button('iOS 安装方式', lambda: self.open_path(ROOT / 'docs/iOS说明.md'))))
         form.addWidget(label('手机面板是只读网页，可在 Safari 中添加到主屏幕。Windows 自动任务必须继续运行。', 'muted'))
         layout.addWidget(group)
+
+    def install_portable_modules(self):
+        if any(item.get('module') == 'module-install' for item in self.jobs.active.values()):
+            self.error('组件正在准备中，请在“任务与日志”查看进度。')
+            return
+        self.start_job('module-install', '下载并启用外部组件', PYTHON,
+                       [ROOT / 'adapters/install_modules.py'], {'modules': ['lecture', 'selection']})
 
     def update_check(self):
         self.background(check_updates, lambda results: self.update_status.setText('\n'.join(f'{x["name"]}：' + (x.get('error') or ('有新提交 ' + x['latest'][:10] if x.get('update') else '与上游一致')) for x in results)))

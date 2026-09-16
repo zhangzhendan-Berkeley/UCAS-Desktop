@@ -31,4 +31,4 @@ $link.Description = 'UCAS 桌面助手 · 托盘后台运行'
 $link.Save()
 """
     subprocess.run(['powershell.exe', '-NoProfile', '-Command', command], cwd=ROOT, check=True)
-print('Windows launcher built. Keep the whole project directory, including .venv.')
+print('Windows launcher built. Keep the whole app folder and its runtime directory.')

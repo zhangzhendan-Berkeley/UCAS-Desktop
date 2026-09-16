@@ -18,9 +18,13 @@ ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / 'data'
 LOGS = ROOT / 'logs'
 VENDOR = ROOT / 'vendor'
-PYTHON = ROOT / '.venv/Scripts/python.exe'
+PYTHON = ROOT / 'runtime/python/python.exe'
+if not PYTHON.is_file():
+    PYTHON = ROOT / '.venv/Scripts/python.exe'
 # An explicit override or a system Node installation; no developer-machine paths.
-NODE = Path(os.environ.get('UCAS_NODE') or shutil.which('node') or 'node.exe')
+NODE = ROOT / 'runtime/node/node.exe'
+if not NODE.is_file():
+    NODE = Path(os.environ.get('UCAS_NODE') or shutil.which('node') or 'node.exe')
 for directory in (DATA, LOGS):
     directory.mkdir(exist_ok=True)
 
@@ -156,7 +160,7 @@ def browser_path():
 
 def child_env(extra=None):
     env = dict(os.environ)
-    env.update({'PYTHONIOENCODING': 'utf-8', 'PYTHONUNBUFFERED': '1', 'NODE_TLS_REJECT_UNAUTHORIZED': '1', 'NEXT_TELEMETRY_DISABLED': '1', 'MSEDGEDRIVER_TELEMETRY_OPTOUT': '1', 'SE_AVOID_STATS': 'true', 'NO_COLOR': '1'})
+    env.update({'PYTHONIOENCODING': 'utf-8', 'PYTHONUNBUFFERED': '1', 'NODE_TLS_REJECT_UNAUTHORIZED': '1', 'NEXT_TELEMETRY_DISABLED': '1', 'MSEDGEDRIVER_TELEMETRY_OPTOUT': '1', 'SE_AVOID_STATS': 'true', 'NO_COLOR': '1', 'UCAS_PYTHON': str(PYTHON)})
     env['PATH'] = str(NODE.parent) + os.pathsep + str(PYTHON.parent) + os.pathsep + env.get('PATH', '')
     env['NO_PROXY'] = ','.join(filter(None, [env.get('NO_PROXY', ''), 'localhost', '127.0.0.1', '::1']))
     env['no_proxy'] = env['NO_PROXY']
@@ -170,12 +174,14 @@ def git_output(args, cwd):
 
 
 def check_updates():
+    from .portable import download, ready
     results = []
     for module in read_json(ROOT / 'modules.json', []):
         repo_dir = ROOT / module['path']
         try:
-            remote = git_output(['ls-remote', module['source'], 'HEAD'], ROOT).split()[0]
-            local = git_output(['rev-parse', 'HEAD'], repo_dir)
+            repo = module['source'].removeprefix('https://github.com/').removesuffix('.git')
+            remote = json.loads(download(f'https://api.github.com/repos/{repo}/commits?per_page=1'))[0]['sha']
+            local = read_json(repo_dir / '.ucas-source.json', {}).get('commit', module['commit']) if ready(ROOT, module) else None
             results.append({'id': module['id'], 'name': module['name'], 'installed': local, 'latest': remote, 'update': local != remote})
         except Exception as exc:
             results.append({'id': module['id'], 'name': module['name'], 'error': str(exc)[:200]})
@@ -184,6 +190,7 @@ def check_updates():
 
 
 def stage_updates():
+    from .portable import download, archive_url, unpack_repo
     results = read_json(DATA / 'updates.json', [])
     manifest = {m['id']: m for m in read_json(ROOT / 'modules.json', [])}
     staged = []
@@ -195,13 +202,15 @@ def stage_updates():
         if not re.fullmatch(r'[0-9a-f]{40}', sha):
             raise ValueError('非法提交哈希')
         target = ROOT / 'updates' / item['id'] / sha
-        target.mkdir(parents=True, exist_ok=True)
-        if not (target / '.git').exists():
-            git_output(['init'], target)
-            git_output(['remote', 'add', 'origin', item['source']], target)
-        git_output(['fetch', '--depth', '1', 'origin', sha], target)
-        git_output(['checkout', '--detach', 'FETCH_HEAD'], target)
-        if git_output(['rev-parse', 'HEAD'], target) != sha:
-            raise RuntimeError('暂存版本校验失败')
+        if target.exists():
+            staged.append(str(target))
+            continue
+        import tempfile
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='.download-', dir=target.parent) as temporary:
+            source = Path(temporary) / 'source'
+            unpack_repo(download(archive_url(item | {'commit': sha})), source)
+            write_json(source / '.ucas-source.json', {'commit': sha, 'source': item['source']})
+            source.rename(target)
         staged.append(str(target))
     return staged

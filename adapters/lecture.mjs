@@ -24,7 +24,7 @@ try {
   const configPath = join(dir, 'config.json');
   writeFileSync(configPath, JSON.stringify({
     runtime: { mode: 'single', dryRun: Boolean(p.preview), headless: false, statePath: join(dir, 'state.json') },
-    captcha: { enabled: true, pythonExecutable: join(root, '.venv', 'Scripts', 'python.exe'), maxAttempts: 3 },
+    captcha: { enabled: true, pythonExecutable: process.env.UCAS_PYTHON || join(root, '.venv', 'Scripts', 'python.exe'), maxAttempts: 3 },
     filter: { timeWindows: (p.days || [0, 1, 2, 3, 4, 5, 6]).map(weekday => ({ weekday, periods: [[p.from || '00:00', p.to || '23:59']] })) },
     logging: { level: 'info' },
   }));

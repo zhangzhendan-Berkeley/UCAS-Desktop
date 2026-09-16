@@ -1,5 +1,6 @@
 """Thin extension of the upstream planner; preserves its database and conflict checks."""
 from html import escape
+from pathlib import Path
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (QTableWidgetItem, QLabel, QGroupBox, QMessageBox,
@@ -15,6 +16,7 @@ from .catalog import Catalog, colors, PALETTE
 class IntegratedPlanner(MainWindow):
     def __init__(self, db, enrollment, directory):
         self.enrollment = enrollment
+        self.directory = directory
         self.grab_path = directory / 'grab-courses.json'
         self.checked_codes = set(read_json(self.grab_path, []))
         self.alternatives_path = directory / 'alternatives.json'
@@ -27,6 +29,15 @@ class IntegratedPlanner(MainWindow):
         self.selected_list.itemChanged.connect(self.check_changed)
         self._enhance_ui()
         self.apply_enrollment()
+
+    def _save_state(self):
+        from coursesystem.state import save_state
+        path = Path(self.db.db_path).resolve()
+        try:
+            saved_path = str(path.relative_to(self.directory.resolve()))
+        except ValueError:
+            saved_path = str(path)
+        save_state(db_path=saved_path, selected_course_ids=list(self.selected))
 
     def _fill_table(self, courses):
         table = self.course_table

@@ -37,7 +37,12 @@ def main():
     window.show()
     if '--smoke-test' in sys.argv:
         QTimer.singleShot(100, window.load_planner)
-        QTimer.singleShot(4000, window.request_exit)
+        def finish_smoke():
+            import json
+            report = {'planner_loaded': window.planner is not None, 'python': sys.executable}
+            (ROOT / 'logs/launcher-smoke.json').write_text(json.dumps(report), encoding='utf-8')
+            window.request_exit()
+        QTimer.singleShot(4000, finish_smoke)
     return application.exec()
 
 if __name__ == '__main__':

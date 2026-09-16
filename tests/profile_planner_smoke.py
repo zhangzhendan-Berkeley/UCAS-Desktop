@@ -56,6 +56,8 @@ with tempfile.TemporaryDirectory() as tmp:
             assert errors.pop() == '账号密码不正确'
             window.load_planner()
             assert window.planner is not None, errors
+            from coursesystem.state import load_state
+            assert load_state()['db_path'] == 'courses.db', 'Portable state uses relative in-app database paths'
             p = window.planner
             p.search_input.setText('测试教师2 测试学院')
             assert p.course_table.rowCount() == 1
