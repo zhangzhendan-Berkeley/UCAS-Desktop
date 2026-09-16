@@ -21,6 +21,7 @@
 
 ## 调研入口与交叉参考
 
+- [Course Planner](https://courseplanner.cysdy.cn/)（页面署名 ITP 草原上的鱼）：2026-09-17 参考课程分类配色、查询筛选、详情及备选的交互组织。对应桌面功能在 `ucasdesk/catalog.py`、`ucasdesk/planner.py` 和 `ucasdesk/ui.py` 中独立实现；未复制网站代码、样式文件、图标或课程数据。既有课表仍来自下述规划器上游。
 - [Littlefish12138/UCAS-on-Github](https://github.com/Littlefish12138/UCAS-on-Github/tree/main/教务系统相关)：本次项目发现和筛选入口；目录快照 `b0b85436da1fab4f0152a6f050558c9b875dfc9c`。
 - [Littlefish12138/UCAS_Mooc_Helper](https://github.com/Littlefish12138/UCAS_Mooc_Helper)：调研军事理论课程自动化；未接入研究生英语测验。
 - [tang-ontheway/ucas-mooc-helper](https://github.com/tang-ontheway/ucas-mooc-helper)：同平台脚本对比，未同时运行。

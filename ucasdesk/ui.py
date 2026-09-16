@@ -730,7 +730,7 @@ class Window(QMainWindow):
             self.error(str(exc))
 
     def build_planner(self):
-        self.planner_layout = self.page('选课规划', '内置上游 2026 年秋季课表快照。规划结果不会自动提交 SEP；可以将选中的课程编码发送到“自动选课”。')
+        self.planner_layout = self.page('选课规划', '按类别浏览课程，比较教学安排，保存备选。内置 2026 年秋季课表快照；规划结果不会自动提交 SEP。')
         self.planner_status = label('首次打开时加载课表…', 'muted')
         self.planner_layout.addWidget(self.planner_status)
         self.planner_layout.addLayout(row(button('从轻新课堂同步已选课程', lambda: self.sync_enrollment('iclass')),
@@ -769,21 +769,16 @@ class Window(QMainWindow):
             self.planner.setStyleSheet('')
             splitter = self.planner.splitter
             left, middle, right = [splitter.widget(i) for i in range(3)]
-            left.setParent(None)
-            right.setParent(None)
-            left.setMinimumWidth(0)
-            right.setMinimumWidth(0)
-            middle.setMinimumWidth(420)
+            for panel in (left, middle, right):
+                panel.setParent(None)
+                panel.setMinimumWidth(0)
             tabs = QTabWidget()
-            tabs.setMinimumWidth(310)
             tabs.addTab(left, '课程库')
             tabs.addTab(right, '规划清单 / 已选状态')
+            tabs.addTab(middle, '周课表')
+            tabs.addTab(self.planner.alternatives_page, '备选')
             self.planner_tabs = tabs
             splitter.insertWidget(0, tabs)
-            splitter.setSizes([350, 730])
-            self.planner.course_table.setColumnWidth(0, 150)
-            self.planner.course_table.setColumnWidth(2, 40)
-            self.planner.course_table.setColumnWidth(3, 40)
             header = self.planner.week_view.table.horizontalHeader()
             header.setSectionResizeMode(0, QHeaderView.Fixed)
             self.planner.week_view.table.setColumnWidth(0, 105)
@@ -854,7 +849,26 @@ class Window(QMainWindow):
         layout.addWidget(label('目标课程编码（每行一门；请复制完整课程编码）'))
         self.course_codes = QPlainTextEdit()
         self.course_codes.setPlaceholderText('可从“选课规划”一键带入，或粘贴 SEP 中的完整课程编码。')
-        layout.addWidget(self.course_codes, 1)
+        self.course_codes.setMaximumHeight(84)
+        layout.addWidget(self.course_codes)
+        self.selection_summary = label('填入编号后显示对应课程；可横向滚动查看全部字段，双击打开详情。', 'muted')
+        layout.addWidget(self.selection_summary)
+        self.selection_table = QTableWidget(0, 9)
+        self.selection_table.setHorizontalHeaderLabels(['课程名称', '学时', '学分', '学院', '主讲教师', '一级学科 / 专业学位类别', '课程类别', '完整课程编号', '核对状态'])
+        self.selection_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.selection_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.selection_table.setAlternatingRowColors(True)
+        self.selection_table.verticalHeader().setVisible(False)
+        self.selection_table.verticalHeader().setDefaultSectionSize(42)
+        for column, width in enumerate([210, 58, 58, 170, 125, 220, 120, 210, 210]):
+            self.selection_table.setColumnWidth(column, width)
+        self.selection_table.cellDoubleClicked.connect(self.selection_details)
+        layout.addWidget(self.selection_table, 1)
+        self.selection_refresh = QTimer(self)
+        self.selection_refresh.setSingleShot(True)
+        self.selection_refresh.setInterval(200)
+        self.selection_refresh.timeout.connect(self.refresh_selection_courses)
+        self.course_codes.textChanged.connect(self.selection_refresh.start)
         self.select_timed = QCheckBox('在指定时间开始')
         self.select_time = QDateTimeEdit(QDateTime.currentDateTime().addSecs(300))
         self.select_time.setDisplayFormat('yyyy-MM-dd HH:mm:ss')
@@ -873,9 +887,47 @@ class Window(QMainWindow):
         layout.addLayout(row(button('仅检查目标课程，不提交', lambda: self.run_selection(True)), button('开始自动选课', lambda: self.run_selection(False), True)))
         layout.addWidget(label('结束后请核对 SEP 的预选列表，并完成学校要求的选课单审核。', 'muted'))
 
+    def refresh_selection_courses(self):
+        codes = list(dict.fromkeys(self.course_codes.toPlainText().split()))
+        self.selection_table.setRowCount(len(codes))
+        if not codes:
+            self.selection_summary.setText('尚未添加目标课程。可从规划勾选导入，或粘贴完整编号。')
+            return
+        if not self.planner:
+            self.load_planner()
+        from .catalog import colors
+        from PySide6.QtGui import QColor
+        catalog = self.planner.catalog if self.planner else None
+        matched = 0
+        for row_index, code in enumerate(codes):
+            course = catalog.resolve(code) if catalog else None
+            if course:
+                info = catalog.info(course)
+                values = [info[k] for k in ('name', 'hours', 'credits', 'department', 'teacher', 'discipline', 'category')]
+                values += [code, self.enrollment.status(course)[0]]
+                matched += 1
+                bg, fg = colors(info['category'])
+            else:
+                values = ['未唯一匹配，请核对完整编号'] + ['未提供'] * 6 + [code, '当前课程库未匹配']
+                bg, fg = '#fff3cc', '#81600d'
+            for column, value in enumerate(values):
+                item = QTableWidgetItem(str(value))
+                item.setData(Qt.UserRole, course.id if course else None)
+                item.setToolTip(str(value) + '\n本地课表快照；双击查看教学安排。')
+                if column in (0, 6):
+                    item.setBackground(QColor(bg))
+                    item.setForeground(QColor(fg))
+                self.selection_table.setItem(row_index, column, item)
+        self.selection_summary.setText(f'待抢 {len(codes)} 门 · 已匹配 {matched} 门 · 未匹配 {len(codes) - matched} 门。信息来自本地课表快照，余量以 SEP 实时检查为准。')
+
+    def selection_details(self, row_index, column):
+        item = self.selection_table.item(row_index, 0)
+        if item and self.planner:
+            self.planner.show_course(item.data(Qt.UserRole))
+
     def run_selection(self, preview):
         try:
-            codes = self.course_codes.toPlainText().split()
+            codes = list(dict.fromkeys(self.course_codes.toPlainText().split()))
             if not codes:
                 raise ValueError('请先填写目标课程编码。')
             start_at = self.select_time.dateTime().toString('yyyy-MM-ddTHH:mm:ss') if self.select_timed.isChecked() else None
@@ -1029,6 +1081,8 @@ class Window(QMainWindow):
         self.pages.setCurrentIndex(index)
         if index == 4 and not self.planner:
             QTimer.singleShot(0, self.load_planner)
+        if index == 5:
+            self.selection_refresh.start()
 
     def open_path(self, path):
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
