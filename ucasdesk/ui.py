@@ -16,6 +16,7 @@ from .core import ROOT, DATA, LOGS, VENDOR, PYTHON, NODE, Vault, Store, read_jso
 from .jobs import Jobs
 from .iclass import IClass, course_id, match_lecture_course
 from .api import LocalAPI
+from .automation import Automation
 
 STATUS = {'running': '运行中', 'stopping': '停止中', 'completed': '已结束', 'failed': '失败 / 有未完成项', 'stopped': '已停止', 'interrupted': '已中断'}
 
@@ -97,6 +98,7 @@ class Window(QMainWindow):
         self.vault = Vault()
         self.store = Store()
         self.jobs = Jobs(self.store, self.vault)
+        self.automation = Automation(self.jobs, self.vault, self)
         self.pool = QThreadPool.globalInstance()
         self.workers = []
         self.courses = []
@@ -152,6 +154,8 @@ class Window(QMainWindow):
         if self.vault.warning:
             self.statusBar().showMessage(self.vault.warning)
         self.setup_tray()
+        self.automation.changed.connect(self.refresh_automation)
+        self.refresh_automation()
 
     def setup_tray(self):
         if not QSystemTrayIcon.isSystemTrayAvailable():
@@ -295,7 +299,7 @@ class Window(QMainWindow):
         layout.addStretch()
 
     def build_iclass(self):
-        layout = self.page('课程与讲座签到', '轻新课堂。自动任务仅处理你选中的排课；需要电脑保持联网且不休眠。')
+        layout = self.page('课程与讲座签到', '轻新课堂。可手动选择排课，或每天 08:00 自动安排当天全部未结束课程；电脑需联网且不休眠。')
         layout.addWidget(self.account_form('iclass', '轻新课堂账号', '学号'))
         self.course_date = QDateEdit(QDate.currentDate())
         self.course_date.setCalendarPopup(True)
@@ -304,6 +308,15 @@ class Window(QMainWindow):
         self.before.setRange(0, 30)
         self.before.setValue(5)
         self.before.setSuffix(' 分钟')
+        daily = self.automation.config.get('course', {})
+        self.before.setValue(daily.get('minutes_before', 5))
+        self.daily_enabled = QCheckBox('每天 08:00 自动查课表并安排签到')
+        self.daily_enabled.setChecked(daily.get('enabled', False))
+        layout.addLayout(row(self.daily_enabled, button('保存每日计划', self.save_daily_plan),
+                             button('停用每日计划', lambda: self.disable_plan('course'))))
+        self.daily_status = label('', 'muted')
+        layout.addWidget(self.daily_status)
+        layout.addWidget(label('勾选记住密码后可随应用重启恢复；08:00 后启动会补查今天，跳过已结束课程。', 'muted'))
         layout.addLayout(row(label('日期'), self.course_date, button('查询课表', self.query_courses, True), label('开课前'), self.before,
                              button('为勾选课程建立自动签到任务', self.schedule_courses)))
         self.course_table = table(['选择', '课程 / 讲座', '教师', '开始', '结束', '签到状态', '排课 ID'])
@@ -338,6 +351,31 @@ class Window(QMainWindow):
             self.start_job('lecture', '科研讲座时间表 · 只读查询', NODE, [ROOT / 'adapters/lecture.mjs'], payload)
         except Exception as exc:
             self.error('请先在“人文讲座预约”填写 SEP 账号。' + str(exc))
+
+    def save_daily_plan(self):
+        try:
+            enabled = self.daily_enabled.isChecked()
+            if not enabled:
+                self.disable_plan('course')
+                return
+            self.account('iclass')
+            self.automation.save('course', {'enabled': True, 'minutes_before': self.before.value()})
+            self.automation.tick()
+        except Exception as exc:
+            self.error(str(exc))
+
+    def disable_plan(self, kind):
+        self.automation.disable(kind)
+        (self.daily_enabled if kind == 'course' else self.lecture_clock).setChecked(False)
+
+    def refresh_automation(self):
+        self.daily_status.setText(self.automation.description('course'))
+        self.lecture_clock_status.setText(self.automation.description('lecture'))
+
+    def stop_all_tasks(self):
+        for kind in ('course', 'lecture'):
+            self.disable_plan(kind)
+        self.jobs.stop_all()
 
     def choose_science_lecture(self):
         dialog = QDialog(self)
@@ -506,10 +544,88 @@ class Window(QMainWindow):
         form.addLayout(row(label('讲座开始时段'), self.lecture_from, label('至'), self.lecture_to))
         form.addLayout(row(label('巡检间隔'), self.lecture_interval, label('最多巡检'), self.lecture_rounds, label('次')))
         form.addWidget(label('首次登录时会打开浏览器；出现新设备或邮箱验证时，在浏览器内完成。达到学校页面显示的预约配额后停止。', 'muted'))
+        form.addWidget(label('报名仅限地点明确包含“雁栖湖”的讲座；中关村、玉泉路、其他校区及地点不明均跳过。', 'muted'))
         layout.addWidget(group)
-        layout.addLayout(row(button('只检查候选讲座', lambda: self.run_lecture(True, False)), button('报名一轮', lambda: self.run_lecture(False, False), True), button('开始定时巡检与报名', lambda: self.run_lecture(False, True))))
+        layout.addLayout(row(button('只检查候选讲座', lambda: self.run_lecture(True, False)), button('报名一轮', lambda: self.run_lecture(False, False), True), button('按间隔巡检（旧方式）', lambda: self.run_lecture(False, True))))
+        clock = self.automation.config.get('lecture', {})
+        self.lecture_clock = QCheckBox('每小时 01 / 31 分检查并记录新讲座')
+        self.lecture_clock.setChecked(clock.get('enabled', False))
+        self.lecture_book = QCheckBox('同时自动报名符合筛选条件的雁栖湖讲座')
+        self.lecture_book.setChecked(clock.get('book', False))
+        self.lecture_hours = QLineEdit(','.join(map(str, clock.get('hours', range(24)))))
+        self.lecture_hours.setPlaceholderText('0–23 的小时，用英文逗号分隔')
+        for index, check in enumerate(self.days):
+            check.setChecked((index + 1) % 7 in clock.get('days', [1, 2, 3, 4, 5]))
+        self.lecture_from.setTime(QTime.fromString(clock.get('from', '18:00'), 'HH:mm'))
+        self.lecture_to.setTime(QTime.fromString(clock.get('to', '22:00'), 'HH:mm'))
+        layout.addWidget(self.lecture_clock)
+        layout.addWidget(self.lecture_book)
+        layout.addLayout(row(label('检查小时'), self.lecture_hours))
+        layout.addLayout(row(button('保存定点计划', self.save_lecture_plan, True),
+                             button('停用定点计划', lambda: self.disable_plan('lecture')),
+                             button('查看发布时间观察', self.show_lecture_report),
+                             button('核对后解除报名暂停', self.clear_booking_pause)))
+        self.lecture_clock_status = label('', 'muted')
+        layout.addWidget(self.lecture_clock_status)
+        layout.addWidget(label('全天默认每天 48 次。后台检查不弹浏览器；需邮箱验证时先用“只检查候选讲座”登录。首次已有讲座作为基线；一周后可参考报告缩小检查小时。保存后重启自动恢复，需勾选记住密码。', 'muted'))
         layout.addWidget(label('预约成功不等于已签到。签到在“课程与讲座签到”中单独建立任务。', 'banner'))
         layout.addStretch()
+
+    def save_lecture_plan(self):
+        try:
+            if not self.lecture_clock.isChecked():
+                self.disable_plan('lecture')
+                return
+            self.account('sep')
+            hours = sorted({int(x.strip()) for x in self.lecture_hours.text().replace('，', ',').split(',') if x.strip()})
+            days = [(index + 1) % 7 for index, c in enumerate(self.days) if c.isChecked()]
+            if not hours or any(x < 0 or x > 23 for x in hours):
+                raise ValueError('检查小时应为 0–23 的整数，用逗号分隔。')
+            if not days or self.lecture_to.time() <= self.lecture_from.time():
+                raise ValueError('请至少选择一天并设置有效的讲座开始时段。')
+            self.automation.save('lecture', {'enabled': True, 'book': self.lecture_book.isChecked(), 'hours': hours,
+                'days': days, 'from': self.lecture_from.time().toString('HH:mm'), 'to': self.lecture_to.time().toString('HH:mm')})
+            self.automation.tick()
+        except Exception as exc:
+            self.error(str(exc))
+
+    def lecture_data_dir(self):
+        import hashlib
+        username = self.account_fields['sep'][0].text().strip()
+        if not username:
+            raise ValueError('请先填写 SEP 账号。')
+        return DATA / 'lecture' / hashlib.sha256(username.encode()).hexdigest()[:16]
+
+    def show_lecture_report(self):
+        try:
+            path = self.lecture_data_dir() / '发布时间观察.md'
+            if not path.exists():
+                raise ValueError('还没有定点检查记录；首次运行后会生成报告。')
+            dialog = QDialog(self)
+            dialog.setWindowTitle('讲座发布时间观察（北京时间）')
+            dialog.resize(1000, 650)
+            layout = QVBoxLayout(dialog)
+            view = QPlainTextEdit()
+            view.setReadOnly(True)
+            view.setPlainText(path.read_text(encoding='utf-8'))
+            layout.addWidget(view)
+            layout.addWidget(button('打开记录目录', lambda: self.open_path(path.parent)))
+            dialog.exec()
+        except Exception as exc:
+            self.error(str(exc))
+
+    def clear_booking_pause(self):
+        try:
+            if any(x['module'] in ('lecture', 'lecture-clock') for x in self.jobs.active.values()):
+                raise ValueError('请先停用定点计划并停止讲座任务，再核对学校记录。')
+            path = self.lecture_data_dir() / 'observations.json'
+            state = read_json(path, {})
+            if state.get('bookingPending'):
+                state['bookingPending'] = False
+                write_json(path, state)
+            self.statusBar().showMessage('报名暂停已解除。重新保存定点计划后继续；观察历史已保留。')
+        except Exception as exc:
+            self.error(str(exc))
 
     def run_lecture(self, preview, scheduled):
         try:
@@ -654,7 +770,7 @@ class Window(QMainWindow):
 
     def build_jobs(self):
         layout = self.page('任务与日志', '“已结束”表示脚本正常退出，具体报名 / 签到 / 选课结果以日志和学校记录为准。')
-        controls = row(button('刷新', self.refresh_jobs), button('停止选中任务', self.stop_selected), button('停止全部任务', self.jobs.stop_all), button('打开日志目录', lambda: self.open_path(LOGS)))
+        controls = row(button('刷新', self.refresh_jobs), button('停止选中任务', self.stop_selected), button('停止全部任务', self.stop_all_tasks), button('打开日志目录', lambda: self.open_path(LOGS)))
         layout.addLayout(controls)
         split = QSplitter(Qt.Vertical)
         self.job_table = table(['任务', '模块', '状态', '开始时间', '最后更新'])
@@ -705,6 +821,9 @@ class Window(QMainWindow):
                 continue
             try:
                 message = json.loads(line)
+                if message.get('event') == 'iclass.daily-plan' and isinstance(message.get('courses'), list):
+                    if self.course_date.date().toString('yyyyMMdd') == message.get('date'):
+                        self.populate_courses(message['courses'])
                 if message.get('event') == 'lecture.science-schedule' and isinstance(message.get('rows'), list):
                     self.science_rows = message['rows']
                     self.science_choose.setEnabled(bool(self.science_rows))
@@ -717,6 +836,10 @@ class Window(QMainWindow):
 
     def stop_selected(self):
         if self.current_log:
+            item = self.jobs.active.get(self.current_log, {})
+            if item.get('module') in ('iclass-daily', 'lecture-clock'):
+                self.disable_plan('course' if item['module'] == 'iclass-daily' else 'lecture')
+                return
             self.jobs.stop(self.current_log)
 
     def build_settings(self):
@@ -795,6 +918,7 @@ class Window(QMainWindow):
         if self.tray:
             self.tray.hide()
         self.clock.stop()
+        self.automation.timer.stop()
         self.jobs.stop_all()
         if self.planner:
             self.planner._save_state()

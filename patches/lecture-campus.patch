@@ -1,0 +1,86 @@
+--- a/src/workflow.ts
++++ b/src/workflow.ts
+@@ -1,3 +1,4 @@
++import { isYanqiLocation } from "./campus.js";
+ import { chromium } from "playwright";
+ import { existsSync } from "node:fs";
+ import type {
+@@ -127,7 +128,7 @@
+ 
+     const seenInRun = new Set<string>();
+     const decisions = decideLectures(
+-      snapshot.lectures,
++      snapshot.lectures.filter(lecture => isYanqiLocation(lecture.location)),
+       state,
+       seenInRun,
+       false,
+@@ -183,6 +184,10 @@
+       const result = await registerLecture(page, lecture, logger);
+       attempts.push(result);
+       logger.info("run.register.result", { ...result });
++      if (result.outcome === "unknown") {
++        stopReason = "本轮报名结果不明确，停止后续报名并等待人工核对";
++        break;
++      }
+ 
+       if (result.outcome === "registered") {
+         markLectureTerminalState(state, lecture, "booked", result.detail);
+--- a/src/lecture-page.ts
++++ b/src/lecture-page.ts
+@@ -14,6 +14,7 @@
+ interface RawLectureRow {
+   rowIndex: number;
+   titleCell: string;
++  locationCell: string;
+   idCandidate: string;
+   cells: string[];
+   actionTexts: string[];
+@@ -25,9 +26,11 @@
+   const rawRows = await page.evaluate((selector) => {
+     const rows = Array.from(document.querySelectorAll(selector));
+     const titleIndex = Array.from(document.querySelectorAll("table th")).findIndex(th => th.textContent?.trim() === "讲座名称");
++    const locationIndex = Array.from(document.querySelectorAll("table th")).findIndex(th => /^(讲座地点|地点|上课地点)$/.test(th.textContent?.trim() ?? ""));
+     return rows.map((row, rowIndex) => {
+       const dataCells = row.querySelectorAll("td");
+       const titleCell = titleIndex >= 0 ? (dataCells[titleIndex]?.textContent ?? "").replace(/\s+/g, " ").trim() : "";
++      const locationCell = locationIndex >= 0 ? (dataCells[locationIndex]?.textContent ?? "").replace(/\s+/g, " ").trim() : "";
+       const cells = Array.from(dataCells)
+         .map((cell) => cell.textContent?.replace(/\s+/g, " ").trim() ?? "")
+         .filter(Boolean);
+@@ -47,6 +50,7 @@
+       return {
+         rowIndex,
+         titleCell,
++        locationCell,
+         idCandidate,
+         cells,
+         actionTexts
+@@ -100,7 +104,7 @@
+   const startTimeText = extractStartTimeText(rawRow.cells);
+   const parsedStartTime = startTimeText ? parseLectureStart(startTimeText) : null;
+   const title = rawRow.titleCell || inferTitle(rawRow.cells, combinedText);
+-  const location = inferLocation(rawRow.cells);
++  const location = rawRow.locationCell || null;
+   const statusText = inferStatusText(combinedText);
+   const terminalState = inferTerminalState(combinedText);
+   const actionText = rawRow.actionTexts.find((text) => /预约|报名|选课/.test(text)) ?? null;
+--- a/src/register.ts
++++ b/src/register.ts
+@@ -1,3 +1,5 @@
++import { isYanqiLocation } from "./campus.js";
++import { extractLectureSnapshot } from "./lecture-page.js";
+ import type { Page } from "playwright";
+ import type { LectureRecord, RegistrationAttemptResult } from "./types.js";
+ import { Logger } from "./log.js";
+@@ -10,6 +12,11 @@
+   lecture: LectureRecord,
+   logger: Logger
+ ): Promise<RegistrationAttemptResult> {
++  const fresh = await extractLectureSnapshot(page);
++  const matches = fresh.lectures.filter(item => item.id === lecture.id && item.title === lecture.title);
++  if (matches.length !== 1 || !isYanqiLocation(matches[0].location) || !matches[0].actionAvailable) {
++    return { lectureId: lecture.id, title: lecture.title, outcome: "unknown", detail: "提交前无法确认同一场次仍在雁栖湖且可报名，未点击报名" };
++  }
+   let dialogMessage: string | null = null;
+   const dialogPromise = page
+     .waitForEvent("dialog", { timeout: 2000 })

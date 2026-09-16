@@ -16,10 +16,10 @@ class Jobs(QObject):
         self.active = {}
 
     def start(self, module, title, program, args, payload=None, cwd=ROOT, extra_env=None):
-        if any(x['module'] == module for x in self.active.values()):
+        if any(x['module'] == module or (module in ('lecture', 'lecture-clock') and x['module'] in ('lecture', 'lecture-clock')) for x in self.active.values()):
             raise RuntimeError('此模块已有运行中的任务，请先在“任务与日志”停止原任务。')
         ids = set()
-        if module in ('iclass', 'iclass-manual', 'lecture-sign') and payload:
+        if module in ('iclass', 'iclass-daily', 'iclass-manual', 'lecture-sign') and payload:
             ids = {str(c['id']) for c in payload.get('courses', [])}
             if payload.get('identifier'):
                 ids.add(payload['identifier'])

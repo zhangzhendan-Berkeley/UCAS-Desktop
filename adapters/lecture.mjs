@@ -7,6 +7,7 @@ import { loadConfig } from '../vendor/ucas-humanity-lecture-bot/dist/src/config.
 import { Logger } from '../vendor/ucas-humanity-lecture-bot/dist/src/log.js';
 import { runAutomation } from '../vendor/ucas-humanity-lecture-bot/dist/src/workflow.js';
 import { queryScienceSchedule } from './lecture_schedule.mjs';
+import { observeAndBook } from './lecture_observe.mjs';
 
 try {
   let input = '';
@@ -29,7 +30,9 @@ try {
   }));
   const config = loadConfig(['--config', configPath]);
   const logger = new Logger('info');
-  if (p.action === 'science-schedule') {
+  if (p.observe) {
+    await observeAndBook(config, logger, dir, p, runAutomation);
+  } else if (p.action === 'science-schedule') {
     await queryScienceSchedule(config, logger);
   } else {
   const rounds = p.scheduled ? Math.min(144, Math.max(1, Number(p.rounds || 12))) : 1;

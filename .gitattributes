@@ -3,7 +3,7 @@
 *.mjs text eol=lf
 *.json text eol=lf
 *.md text eol=lf
-*.patch text eol=lf
+*.patch text eol=lf whitespace=-blank-at-eol
 *.cmd text eol=crlf
 *.png binary
 *.ico binary
