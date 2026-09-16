@@ -47,6 +47,28 @@ def copy_contents(source, target):
     shutil.copytree(source, target, dirs_exist_ok=True, ignore=ignore)
 
 
+def trim_qt(output):
+    """Keep the replaceable Qt modules/plugins actually used by this Widgets app."""
+    qt = (output / 'runtime/python/Lib/site-packages/PySide6').resolve()
+    assert qt.is_relative_to(output.resolve())
+    modules = {'Core', 'Gui', 'Widgets', 'Network', 'Svg', 'SvgWidgets', 'PrintSupport', 'OpenGL', 'OpenGLWidgets'}
+    for path in qt.iterdir():
+        if path.is_dir() and path.name in {'qml', 'resources', 'lib', 'include', 'typesystems', 'metatypes', 'glue', 'doc'}:
+            assert path.resolve().is_relative_to(qt)
+            shutil.rmtree(path)
+        elif path.is_file() and (path.suffix == '.exe'
+                or (path.name.startswith('Qt6') and path.suffix == '.dll' and path.stem[3:] not in modules)
+                or (path.name.startswith('Qt') and path.suffix in {'.pyd', '.pyi'} and path.stem[2:] not in modules)
+                or path.name.startswith(('avcodec-', 'avformat-', 'avutil-', 'swresample-', 'swscale-'))):
+            path.unlink()
+    plugins = qt / 'plugins'
+    for path in plugins.iterdir():
+        if path.is_dir() and path.name not in {'platforms', 'imageformats', 'styles', 'tls', 'networkinformation', 'iconengines'}:
+            assert path.resolve().is_relative_to(qt)
+            shutil.rmtree(path)
+    (plugins / 'imageformats/qpdf.dll').unlink(missing_ok=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--version', default='0.2.0')
@@ -121,6 +143,7 @@ def main():
     for pattern in ('msvcp140*.dll', 'vcruntime140*.dll', 'concrt140.dll'):
         for dll in (output / 'runtime/python/Lib/site-packages/PySide6').glob(pattern):
             shutil.copy2(dll, output / 'runtime/python' / dll.name)
+    trim_qt(output)
     copy_contents(node_dir, output / 'runtime/node')
     copy_contents(sources['lecture'] / 'node_modules', output / 'runtime/lecture-node/node_modules')
     # MIT planner source and its upstream course snapshot; no personal planner database.
@@ -130,12 +153,28 @@ def main():
     shutil.copy2(sources['planner'] / 'data/2026年秋季学期课表.xlsx', planner_data / '2026年秋季学期课表.xlsx')
     for name in ('LICENSE', 'README.md', 'pyproject.toml'):
         shutil.copy2(sources['planner'] / name, output / 'vendor/UCAS-Course-Selector' / name)
-    copy_contents(sources['mooc'], output / 'vendor/mooc-english')
+    mooc = output / 'vendor/mooc-english'
+    mooc.mkdir(parents=True, exist_ok=True)
+    # Never redistribute upstream's demo login URL, account settings or screenshots.
+    for path in mooc.iterdir():
+        if path.name not in {'node_modules', 'package.json', 'package-lock.json', 'SOURCE.md'}:
+            assert path.resolve().is_relative_to(mooc.resolve())
+            if path.is_dir(): shutil.rmtree(path)
+            else: path.unlink()
+    for name in ('package.json', 'package-lock.json'):
+        shutil.copy2(sources['mooc'] / name, mooc / name)
+    copy_contents(sources['mooc'] / 'node_modules', mooc / 'node_modules')
+    (mooc / 'SOURCE.md').write_text(
+        'Source: https://github.com/wendychan03/ucas-mooc-helper\n'
+        'Original work: https://github.com/kejaly/ucas_english_mooc\n'
+        'License field: ISC; see package.json and ../../THIRD_PARTY.md.\n'
+        'The complete source of the functions used by this app is in ../../adapters/mooc_helpers.mjs.\n'
+        'Upstream demo login settings are excluded. Fixed revision: ../../modules.json.\n', encoding='utf-8')
     spec = importlib.util.spec_from_file_location('portable_setup', ROOT / 'scripts/setup.py')
     setup = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(setup)
     setup.ROOT = output
-    setup.prepare_mooc(output / 'vendor/mooc-english')
+    setup.prepare_mooc(sources['mooc'])
     (output / 'runtime/modules-downloads.json').write_text(json.dumps(manifest, indent=2), encoding='utf-8')
     run([python, output / 'scripts/build_launcher.py'], output)
     report = json.loads((cache / 'python-install-report.json').read_text(encoding='utf-8'))
