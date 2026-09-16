@@ -17,6 +17,7 @@ from .jobs import Jobs
 from .iclass import IClass, course_id, match_lecture_course
 from .api import LocalAPI
 from .automation import Automation
+from .enrollment import Enrollment, account_hash
 
 STATUS = {'running': '运行中', 'stopping': '停止中', 'completed': '已结束', 'failed': '失败 / 有未完成项', 'stopped': '已停止', 'interrupted': '已中断'}
 
@@ -103,6 +104,9 @@ class Window(QMainWindow):
         self.workers = []
         self.courses = []
         self.account_fields = {}
+        self.profile_status = {}
+        self.account_jobs = {}
+        self.enrollment = Enrollment(DATA / 'planner', self.vault.get)
         self.settings = read_json(DATA / 'settings.json', {})
         self.api = None
         self.planner = None
@@ -121,7 +125,7 @@ class Window(QMainWindow):
         side.addSpacing(28)
         self.nav = QListWidget()
         self.nav.setObjectName('navigation')
-        self.nav.addItems(['概览', '课程与讲座签到', '人文讲座预约', '国科大在线', '选课规划', '自动选课', '任务与日志', '设置与更新'])
+        self.nav.addItems(['概览', '课程与讲座签到', '人文讲座预约', '国科大在线', '选课规划', '自动选课', '任务与日志', '设置与更新', '个人信息'])
         side.addWidget(self.nav)
         self.runtime_hint = label('本地运行 · v0.1.0\n关闭窗口后托盘运行\n右键托盘可退出程序', 'sideText')
         side.addWidget(self.runtime_hint)
@@ -137,6 +141,7 @@ class Window(QMainWindow):
         self.build_selection()
         self.build_jobs()
         self.build_settings()
+        self.build_profile()
         self.nav.currentRowChanged.connect(self.navigate)
         self.nav.setCurrentRow(0)
         self.jobs.changed.connect(self.refresh_jobs)
@@ -236,12 +241,12 @@ class Window(QMainWindow):
     def error(self, text):
         QMessageBox.warning(self, '需要处理', redact(text, self.vault.secret_values()))
 
-    def background(self, function, callback):
+    def background(self, function, callback, on_error=None):
         self.statusBar().showMessage('正在处理，请稍候…')
         worker = Work(function)
         self.workers.append(worker)
         worker.signals.done.connect(callback)
-        worker.signals.error.connect(self.error)
+        worker.signals.error.connect(on_error or self.error)
         worker.signals.finished.connect(lambda: self.release_worker(worker))
         self.pool.start(worker)
 
@@ -260,19 +265,82 @@ class Window(QMainWindow):
         password.setEchoMode(QLineEdit.Password)
         password.setPlaceholderText('密码只在本机使用')
         remember = QCheckBox('记住账号密码（使用当前 Windows 账户加密）')
-        remember.setChecked(bool(existing['password']))
+        remember.setChecked(True)
         form.addRow('账号', user)
         form.addRow('密码', password)
-        form.addRow(remember)
+        remember.setVisible(False)  # Compatibility with existing account callers; storage is always encrypted.
+        form.addRow(label('编辑完成后自动加密保存，所有模块共用；也可点击下方保存。', 'muted'))
         self.account_fields[key] = (user, password, remember)
+        user.editingFinished.connect(lambda: self.save_profile(key, quiet=True))
+        password.editingFinished.connect(lambda: self.save_profile(key, quiet=True))
+        form.addRow(row(button('保存账号', lambda: self.save_profile(key)), button('检测账号密码', lambda: self.test_account(key))))
+        self.profile_status[key] = label('已读取本机保存的账号' if existing['password'] else '尚未保存账号', 'muted')
+        form.addRow(self.profile_status[key])
         return group
 
     def account(self, key):
         user, password, remember = self.account_fields[key]
         if not user.text().strip() or not password.text():
-            raise ValueError('请填写此模块的账号和密码。')
-        self.vault.set(key, user.text(), password.text(), remember.isChecked())
+            raise ValueError('请先到“个人信息”填写账号和密码。')
+        self.vault.set(key, user.text(), password.text(), True)
         return self.vault.get(key).copy()
+
+    def build_profile(self):
+        layout = self.page('个人信息', '账号由当前 Windows 用户加密保存在本机；课程、讲座、已选同步与自动选课共用。')
+        layout.addWidget(self.account_form('sep', 'SEP 信息门户账号', 'SEP 邮箱 / 账号'))
+        layout.addWidget(self.account_form('iclass', '轻新课堂账号', '学号'))
+        layout.addWidget(label('账号修改对之后启动的任务生效。检测只登录，不报名、不选课、不签到；SEP 检测会打开独立浏览器，验证码或邮箱验证需要你完成。', 'muted'))
+        layout.addStretch()
+
+    def profile_link(self, text):
+        group = QWidget()
+        layout = QHBoxLayout(group)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(label(text + ' · 使用个人信息页保存的账号', 'muted'), 1)
+        layout.addWidget(button('个人信息 / 修改账号', lambda: self.nav.setCurrentRow(8)))
+        return group
+
+    def save_profile(self, key, quiet=False):
+        try:
+            user, password, _ = self.account_fields[key]
+            if quiet and (not user.text().strip() or not password.text()):
+                return
+            self.account(key)
+            self.profile_status[key].setText('已加密保存；重开应用后自动读取。')
+            if self.planner:
+                self.planner._refresh_views()
+                self.planner._apply_filters()
+        except Exception as exc:
+            self.error(str(exc))
+
+    def account_version(self, key):
+        import hashlib
+        user, password, _ = self.account_fields[key]
+        return hashlib.sha256(json.dumps([user.text().strip(), password.text()]).encode()).hexdigest()
+
+    def checked_account(self, key, version, success, message):
+        if self.account_version(key) != version:
+            return
+        self.profile_status[key].setText(message)
+        if not success:
+            self.error(message)
+
+    def test_account(self, key):
+        try:
+            account = self.account(key)
+            version = self.account_version(key)
+            self.profile_status[key].setText('正在使用新登录检测…')
+            if key == 'iclass':
+                self.background(lambda: IClass(**account).login(),
+                    lambda _: self.checked_account(key, version, True, '轻新课堂账号密码验证成功。'),
+                    lambda error: self.checked_account(key, version, False, error))
+            else:
+                job = self.jobs.start('account-sep', 'SEP 账号密码检测 · 只登录', PYTHON,
+                                      [ROOT / 'adapters/account_worker.py'], account | {'action': 'check'})
+                self.account_jobs[job] = {'version': version, 'account': account['username'], 'action': 'check'}
+        except Exception as exc:
+            self.profile_status[key].setText('检测未完成：' + redact(str(exc), self.vault.secret_values()))
+            self.error(str(exc))
 
     def build_home(self):
         layout = self.page('把校园事务放在一起', '已按雁栖湖校区配置。选课规划可直接使用，学校账号相关功能需首次登录验证。')
@@ -300,7 +368,7 @@ class Window(QMainWindow):
 
     def build_iclass(self):
         layout = self.page('课程与讲座签到', '轻新课堂。可手动选择排课，或每天 08:00 自动安排当天全部未结束课程；电脑需联网且不休眠。')
-        layout.addWidget(self.account_form('iclass', '轻新课堂账号', '学号'))
+        layout.addWidget(self.profile_link('轻新课堂'))
         self.course_date = QDateEdit(QDate.currentDate())
         self.course_date.setCalendarPopup(True)
         self.course_date.setDisplayFormat('yyyy-MM-dd')
@@ -316,7 +384,7 @@ class Window(QMainWindow):
                              button('停用每日计划', lambda: self.disable_plan('course'))))
         self.daily_status = label('', 'muted')
         layout.addWidget(self.daily_status)
-        layout.addWidget(label('勾选记住密码后可随应用重启恢复；08:00 后启动会补查今天，跳过已结束课程。', 'muted'))
+        layout.addWidget(label('个人信息页的账号自动保存，计划可随应用重启恢复；08:00 后启动会补查今天。', 'muted'))
         layout.addLayout(row(label('日期'), self.course_date, button('查询课表', self.query_courses, True), label('开课前'), self.before,
                              button('为勾选课程建立自动签到任务', self.schedule_courses)))
         self.course_table = table(['选择', '课程 / 讲座', '教师', '开始', '结束', '签到状态', '排课 ID'])
@@ -350,7 +418,7 @@ class Window(QMainWindow):
             payload = self.account('sep') | {'action': 'science-schedule', 'preview': True}
             self.start_job('lecture', '科研讲座时间表 · 只读查询', NODE, [ROOT / 'adapters/lecture.mjs'], payload)
         except Exception as exc:
-            self.error('请先在“人文讲座预约”填写 SEP 账号。' + str(exc))
+            self.error('请先在“个人信息”填写 SEP 账号。' + str(exc))
 
     def save_daily_plan(self):
         try:
@@ -521,7 +589,7 @@ class Window(QMainWindow):
 
     def build_lecture(self):
         layout = self.page('人文讲座预约', '使用 SEP 的人文讲座报名入口。先查看候选结果，再按自己的空闲时间建立报名任务。')
-        layout.addWidget(self.account_form('sep', 'SEP 信息门户账号', 'SEP 登录邮箱 / 账号'))
+        layout.addWidget(self.profile_link('SEP 信息门户'))
         group = QGroupBox('筛选可以参加的讲座')
         form = QVBoxLayout(group)
         days = QHBoxLayout()
@@ -567,7 +635,7 @@ class Window(QMainWindow):
                              button('核对后解除报名暂停', self.clear_booking_pause)))
         self.lecture_clock_status = label('', 'muted')
         layout.addWidget(self.lecture_clock_status)
-        layout.addWidget(label('全天默认每天 48 次。后台检查不弹浏览器；需邮箱验证时先用“只检查候选讲座”登录。首次已有讲座作为基线；一周后可参考报告缩小检查小时。保存后重启自动恢复，需勾选记住密码。', 'muted'))
+        layout.addWidget(label('全天默认每天 48 次。后台检查不弹浏览器；需邮箱验证时先用“只检查候选讲座”登录。首次已有讲座作为基线；一周后可参考报告缩小检查小时。保存后随应用重启自动恢复。', 'muted'))
         layout.addWidget(label('预约成功不等于已签到。签到在“课程与讲座签到”中单独建立任务。', 'banner'))
         layout.addStretch()
 
@@ -665,7 +733,11 @@ class Window(QMainWindow):
         self.planner_layout = self.page('选课规划', '内置上游 2026 年秋季课表快照。规划结果不会自动提交 SEP；可以将选中的课程编码发送到“自动选课”。')
         self.planner_status = label('首次打开时加载课表…', 'muted')
         self.planner_layout.addWidget(self.planner_status)
-        self.planner_layout.addWidget(button('把规划中已选课程发送到自动选课', self.transfer_courses))
+        self.planner_layout.addLayout(row(button('从轻新课堂同步已选课程', lambda: self.sync_enrollment('iclass')),
+            button('从 SEP 同步已选课程', lambda: self.sync_enrollment('sep')),
+            button('仅把勾选课程导入抢课', self.transfer_courses, True)))
+        self.enrollment_status = label('在“规划清单 / 已选状态”中勾选要抢的课程。同步只查询，不选课、不退课。', 'muted')
+        self.planner_layout.addWidget(self.enrollment_status)
 
     def load_planner(self):
         if self.planner:
@@ -678,7 +750,7 @@ class Window(QMainWindow):
             paths.data_dir = lambda: directory
             from coursesystem.importer import parse_xlsx, write_db
             from coursesystem.db import CourseDatabase
-            from coursesystem.main_window import MainWindow
+            from .planner import IntegratedPlanner
             database = directory / 'courses.db'
             if not database.exists():
                 parsed = parse_xlsx(VENDOR / 'UCAS-Course-Selector/data/2026年秋季学期课表.xlsx')
@@ -688,7 +760,7 @@ class Window(QMainWindow):
             saved_db = saved.get('db_path')
             if saved_db and Path(saved_db).is_file():
                 database = Path(saved_db)
-            self.planner = MainWindow(CourseDatabase(database))
+            self.planner = IntegratedPlanner(CourseDatabase(database), self.enrollment, directory)
             if not saved.get('ui'):
                 campus_index = self.planner.campus_combo.findData('H')
                 if campus_index >= 0:
@@ -705,7 +777,8 @@ class Window(QMainWindow):
             tabs = QTabWidget()
             tabs.setMinimumWidth(310)
             tabs.addTab(left, '课程库')
-            tabs.addTab(right, '已选课程 / 学分')
+            tabs.addTab(right, '规划清单 / 已选状态')
+            self.planner_tabs = tabs
             splitter.insertWidget(0, tabs)
             splitter.setSizes([350, 730])
             self.planner.course_table.setColumnWidth(0, 150)
@@ -717,6 +790,9 @@ class Window(QMainWindow):
             self.planner_layout.addWidget(self.planner, 1)
             count = len(self.planner.db.get_all_courses())
             self.planner_status.setText(f'已载入 {count} 门课程。请在校区筛选中选择“雁栖湖”；以学校最新课表为准。')
+            snapshot = self.enrollment.current()
+            if snapshot:
+                self.enrollment_status.setText(f'上次同步 {snapshot.get("fetched_at", "")} · {len(snapshot.get("courses", []))} 门 · {snapshot.get("semester", "")}; 已选状态以该次查询为准。')
         except Exception as exc:
             self.planner_status.setText('加载失败：' + str(exc))
             self.error(str(exc))
@@ -725,15 +801,56 @@ class Window(QMainWindow):
         if not self.planner:
             self.load_planner()
         if self.planner:
-            codes = [course.code for course in self.planner.selected.values()]
+            codes = self.planner.checked_pending_codes()
             if not codes:
-                self.error('请先在选课规划中双击选择课程。')
+                self.planner_tabs.setCurrentIndex(1)
+                self.error('请在“规划清单 / 已选状态”中勾选要抢的课程。已选上的课程不会重复导入。')
                 return
             self.course_codes.setPlainText('\n'.join(codes))
             self.nav.setCurrentRow(5)
 
+    def sync_enrollment(self, source):
+        if not self.planner:
+            self.load_planner()
+        if not self.planner:
+            return
+        try:
+            account = self.account(source)
+            version = self.account_version(source)
+            self.enrollment_status.setText('正在只读查询已选课程…')
+            if source == 'iclass':
+                self.background(lambda: IClass(**account).my_courses(),
+                    lambda result: self.enrollment_received(result, account['username'], source, version),
+                    lambda error: self.enrollment_error(error))
+            else:
+                job = self.jobs.start('account-sep', 'SEP 已选课程同步 · 只读', PYTHON,
+                    [ROOT / 'adapters/account_worker.py'], account | {'action': 'courses'})
+                self.account_jobs[job] = {'version': version, 'account': account['username'], 'action': 'courses'}
+        except Exception as exc:
+            self.enrollment_error(str(exc))
+
+    def enrollment_error(self, error):
+        self.enrollment_status.setText('同步未完成，已保留上次结果。')
+        self.error(error)
+
+    def enrollment_received(self, snapshot, username, source, version):
+        if self.account_version(source) != version:
+            self.enrollment_status.setText('查询期间账号已修改，本次结果未应用，请重新同步。')
+            return
+        try:
+            self.enrollment.save(snapshot, username)
+            count, unresolved = self.planner.apply_enrollment()
+            self.planner_tabs.setCurrentIndex(1)
+            self.enrollment_status.setText(f'已同步 {len(snapshot["courses"])} 门，加入规划 {count} 门；未匹配 {len(unresolved)} 门。查询时间：{snapshot["fetched_at"]}')
+            if unresolved:
+                self.error('以下课程未能唯一匹配，未随意加入其他同名课程：\n' + '\n'.join(f'{x["code"]} {x["name"]}：{x["reason"]}' for x in unresolved))
+        except Exception as exc:
+            self.enrollment_error(str(exc))
+
     def build_selection(self):
-        layout = self.page('自动选课', '接入新版 xkgo 选课页面。启动后会打开独立 Edge，请手动登录 SEP 并进入选课主页。')
+        layout = self.page('自动选课', '使用个人信息页保存的 SEP 账号自动登录；验证码或邮箱验证需要在浏览器中完成。')
+        layout.addWidget(self.profile_link('SEP 自动选课'))
+        layout.addWidget(button('从规划中导入勾选课程', self.transfer_courses))
         layout.addWidget(label('目标课程编码（每行一门；请复制完整课程编码）'))
         self.course_codes = QPlainTextEdit()
         self.course_codes.setPlaceholderText('可从“选课规划”一键带入，或粘贴 SEP 中的完整课程编码。')
@@ -762,7 +879,7 @@ class Window(QMainWindow):
             if not codes:
                 raise ValueError('请先填写目标课程编码。')
             start_at = self.select_time.dateTime().toString('yyyy-MM-ddTHH:mm:ss') if self.select_timed.isChecked() else None
-            payload = {'codes': codes, 'preview': preview, 'start_at': start_at,
+            payload = self.account('sep') | {'codes': codes, 'preview': preview, 'start_at': start_at,
                        'interval': self.select_interval.value(), 'rounds': self.select_rounds.value() if self.select_repeat.isChecked() and not preview else 1}
             self.start_job('selection', f'选课{"预览" if preview else "任务"} · {len(codes)} 门', PYTHON, [ROOT / 'adapters/selection_worker.py'], payload)
         except Exception as exc:
@@ -785,6 +902,13 @@ class Window(QMainWindow):
 
     def refresh_jobs(self):
         items = self.store.list()
+        for item in items:
+            if item['id'] in self.account_jobs and item['id'] not in self.jobs.active:
+                meta = self.account_jobs.pop(item['id'])
+                if not self._quitting:
+                    self.checked_account('sep', meta['version'], False, '检测或同步未完成，请查看任务日志；没有把旧会话当成密码验证成功。')
+                if meta['action'] == 'courses':
+                    self.enrollment_status.setText('同步未完成，保留上次结果。')
         selected = self.current_log
         self.job_table.blockSignals(True)
         self.job_table.setRowCount(len(items))
@@ -821,6 +945,15 @@ class Window(QMainWindow):
                 continue
             try:
                 message = json.loads(line)
+                meta = self.account_jobs.get(job_id)
+                if meta and message.get('event') == 'account.check':
+                    self.checked_account('sep', meta['version'], message.get('status') == 'valid', message.get('message', '检测未完成'))
+                    if meta['action'] == 'courses' and message.get('status') != 'valid':
+                        self.enrollment_status.setText('SEP 同步未完成，保留上次结果。')
+                    self.account_jobs.pop(job_id, None)
+                elif meta and message.get('event') == 'account.courses':
+                    self.enrollment_received(message['snapshot'], meta['account'], 'sep', meta['version'])
+                    self.account_jobs.pop(job_id, None)
                 if message.get('event') == 'iclass.daily-plan' and isinstance(message.get('courses'), list):
                     if self.course_date.date().toString('yyyyMMdd') == message.get('date'):
                         self.populate_courses(message['courses'])
@@ -949,6 +1082,16 @@ QLabel#banner { background: #e6f0e7; color: #2d5a41; border: 1px solid #cddfcf; 
 QGroupBox { border: 1px solid #d5dfd6; border-radius: 11px; margin-top: 12px; padding: 20px 14px 14px; background: #fff; font-weight: 600; }
 QGroupBox::title { subcontrol-origin: margin; left: 14px; padding: 0 5px; color: #27543e; }
 QGroupBox QLabel, QGroupBox QCheckBox { background: transparent; font-weight: 400; }
+QCheckBox { spacing: 9px; min-height: 26px; }
+QCheckBox::indicator, QAbstractItemView::indicator, QGroupBox::indicator, QMenu::indicator {
+    width: 20px; height: 20px; border: 2px solid #607c6b; border-radius: 4px; background: #ffffff;
+}
+QCheckBox::indicator:hover, QAbstractItemView::indicator:hover { border-color: #174e35; background: #e7f2ea; }
+QCheckBox::indicator:checked, QAbstractItemView::indicator:checked, QGroupBox::indicator:checked, QMenu::indicator:checked {
+    background: #246347; border-color: #174e35; image: url("__CHECK_ICON__");
+}
+QCheckBox::indicator:disabled, QAbstractItemView::indicator:disabled { border-color: #a2afa7; background: #dde5df; }
+QCheckBox::indicator:checked:disabled, QAbstractItemView::indicator:checked:disabled { background: #819f8b; image: url("__CHECK_ICON__"); }
 QPushButton { background: #fff; color: #285741; border: 1px solid #c4d8c8; border-radius: 7px; padding: 9px 13px; min-height: 19px; }
 QPushButton:hover { background: #e6f0e7; border-color: #8cb599; }
 QPushButton#primary { background: #286449; color: white; border-color: #286449; }
@@ -958,4 +1101,4 @@ QTableWidget { background: white; alternate-background-color: #f1f6f1; border: 1
 QHeaderView::section { background: #eaf1eb; color: #315b46; border: none; border-bottom: 1px solid #cedecf; padding: 8px; }
 QTableWidget::item:selected { background: #d1e7d5; color: #153d28; }
 QStatusBar { background: #eaf0ea; color: #536b5c; }
-'''
+'''.replace('__CHECK_ICON__', (ROOT / 'assets/check.svg').as_posix())

@@ -13,6 +13,8 @@ sys.path.insert(0, str(ROOT / 'vendor/UCAS-COURSE-SELECTION-SCRIPT'))
 from selenium import webdriver
 from selenium.webdriver.edge.service import Service
 from ucasdesk.core import DATA
+from ucasdesk.sep import login_sep
+from ucasdesk.enrollment import account_hash
 import main as upstream
 from course_flow import run_course_selection, RateLimitedError, assert_not_rate_limited, open_query_page, query_course, target_checkbox, RequestPacer
 
@@ -29,7 +31,9 @@ def run(config):
     if not codes or any(not re.fullmatch(r'[A-Za-z0-9-]{8,30}', c) for c in codes):
         raise ValueError('课程编码格式不正确，请从 SEP 复制完整编码。')
     options = webdriver.EdgeOptions()
-    options.add_argument('--user-data-dir=' + str(DATA / 'browser-selection'))
+    if not config.get('username') or not config.get('password'):
+        raise ValueError('请先在个人信息页保存 SEP 账号。')
+    options.add_argument('--user-data-dir=' + str(DATA / 'browser-selection' / account_hash(config['username'])[:16]))
     options.add_argument('--no-first-run')
     options.page_load_strategy = 'eager'
     service = Service(log_output=str(ROOT / 'logs/edgedriver.log'))
@@ -37,17 +41,8 @@ def run(config):
     print('正在启动 Edge。首次使用可能需要下载匹配的驱动。', flush=True)
     driver = webdriver.Edge(options=options, service=service)
     try:
-        driver.get('https://sep.ucas.ac.cn/')
-        print('请在打开的窗口登录 SEP，并进入“选课”主页。等待时间为 10 分钟。', flush=True)
-        deadline = time.monotonic() + 600
-        while True:
-            try:
-                upstream.select_course_tab(driver)
-                break
-            except RuntimeError:
-                if time.monotonic() > deadline:
-                    raise RuntimeError('等待登录超时，请重新开始。')
-                time.sleep(2)
+        driver.set_page_load_timeout(30)
+        login_sep(driver, config, open_courses=True, timeout=600)
         if config.get('start_at'):
             start_at = datetime.fromisoformat(config['start_at'])
             print(f'登录完成，等待执行时间 {start_at}。', flush=True)

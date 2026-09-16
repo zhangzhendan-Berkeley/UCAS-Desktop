@@ -87,8 +87,8 @@ class Vault:
     def get(self, key):
         return self.accounts.get(key, {'username': '', 'password': ''})
 
-    def set(self, key, username, password, remember=False):
-        self.accounts[key] = {'username': username.strip(), 'password': password}
+    def set(self, key, username, password, remember=True):
+        account = {'username': username.strip(), 'password': password}
         stored = {}
         if self.path.exists():
             try:
@@ -96,12 +96,13 @@ class Vault:
             except Exception:
                 raise RuntimeError('旧账号文件不能解密，请先备份并移走 data/accounts.dpapi')
         if remember:
-            stored[key] = self.accounts[key]
+            stored[key] = account
         else:
             stored.pop(key, None)
         temp = self.path.with_suffix('.tmp')
         temp.write_bytes(protect(json.dumps(stored).encode()))
         os.replace(temp, self.path)
+        self.accounts[key] = account
 
     def secret_values(self):
         return [v for a in self.accounts.values() for v in a.values() if v]

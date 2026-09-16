@@ -1,6 +1,7 @@
 from __future__ import annotations
 from datetime import datetime, timedelta
 import re
+import os
 import threading
 import time
 import unicodedata
@@ -57,6 +58,7 @@ class IClass:
             raise ValueError('请先填写轻新课堂学号和密码。')
         self.username, self.password = username.strip(), password
         self.session = transport or requests.Session()
+        self.direct = transport is None and os.environ.get('UCAS_ICLASS_USE_PROXY') != '1'
         self.session.headers.update({'User-Agent': UA})
         self.session_id = None
         self.user_id = None
@@ -65,6 +67,9 @@ class IClass:
 
     def _request(self, method, path, **kwargs):
         try:
+            if self.direct:
+                # Fixed school host only. Keep TLS/CA verification, avoid unrelated HTTP proxy routing.
+                kwargs.setdefault('proxies', {'http': '', 'https': ''})
             response = self.session.request(method, BASE + path, timeout=15, **kwargs)
             response.raise_for_status()
             data = response.json()
@@ -114,6 +119,38 @@ class IClass:
         if str(data.get('STATUS')) != '0' or not isinstance(stamp, (int, float)) or isinstance(stamp, bool):
             raise RuntimeError('无法校准学校时间，已停止签到。')
         return int(stamp) - 3000
+
+    def my_courses(self, today=None):
+        """The own-course endpoint, never the public course catalog or attendance endpoint."""
+        today = today or datetime.now().date()
+        with self.lock:
+            self.login()
+            data = self._request('POST', '/my/get_my_course.action', data={'id': self.user_id},
+                                 headers={'sessionId': self.session_id})
+            if str(data.get('STATUS')) != '0' or not isinstance(data.get('result'), list):
+                raise RuntimeError('我的课程查询失败或数据格式变化，保留上次同步结果。')
+            courses = []
+            for item in data['result']:
+                # Real responses may contain a stale semesterName (e.g. 2014) with 2026 dates.
+                def date_value(key):
+                    value = str(item.get(key) or '').replace('-', '')[:8]
+                    return datetime.strptime(value, '%Y%m%d').date() if value else None
+                begin, end = date_value('beginDate'), date_value('endDate')
+                if not begin or not end:
+                    raise RuntimeError('课程缺少有效起止日期，无法确认学期；请改用 SEP 同步。')
+                if not begin <= today <= end:
+                    continue
+                semester = f'{begin.year}年' + ('秋季' if begin.month >= 7 else '春季')
+                code, name = str(item.get('courseNum') or '').strip(), str(item.get('courseName') or '').strip()
+                if not code or not name:
+                    raise RuntimeError('课程编码或名称缺失，未更新已选状态。')
+                courses.append({'code': code, 'name': name, 'semester': semester,
+                                'begin': begin.isoformat(), 'end': end.isoformat()})
+            semesters = {c['semester'] for c in courses}
+            if len(semesters) > 1:
+                raise RuntimeError('课程日期跨越多个学期，无法自动合并；请改用 SEP 同步。')
+            return {'source': 'iclass', 'courses': courses, 'complete': True,
+                    'semester': next(iter(semesters), ''), 'fetched_at': datetime.now().isoformat(timespec='seconds')}
 
     def sign(self, identifier):
         identifier = course_id(identifier)
