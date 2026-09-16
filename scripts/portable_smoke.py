@@ -14,6 +14,18 @@ def main():
     assert Path(sys.executable).resolve().is_relative_to(ROOT / 'runtime/python')
     assert str(ROOT) in sys.path, 'Embedded interpreter must find app modules without injected paths'
     assert all(Path(p).resolve().is_relative_to(ROOT) for p in sys.path if p), sys.path
+    # Check the OCR subprocess before Qt adds any DLL directories to the parent.
+    subprocess.run([sys.executable, '-c', '''import ddddocr, ctypes, sys
+from pathlib import Path
+ddddocr.DdddOcr(show_ad=False)
+k=ctypes.WinDLL('kernel32',use_last_error=True)
+k.GetModuleHandleW.argtypes=[ctypes.c_wchar_p];k.GetModuleHandleW.restype=ctypes.c_void_p
+k.GetModuleFileNameW.argtypes=[ctypes.c_void_p,ctypes.c_wchar_p,ctypes.c_uint]
+handle=k.GetModuleHandleW('msvcp140.dll');assert handle
+buffer=ctypes.create_unicode_buffer(32768);assert k.GetModuleFileNameW(handle,buffer,len(buffer))
+assert Path(buffer.value).resolve().parent==Path(sys.executable).resolve().parent, 'OCR used external MSVC runtime'
+print('Standalone OCR with bundled MSVC: PASS')
+'''], check=True)
     for name in ('PySide6.QtWidgets', 'PySide6.QtSvg', 'openpyxl', 'pandas', 'reportlab',
                  'requests', 'qrcode', 'selenium', 'ddddocr', 'numpy', 'PIL', 'onnxruntime',
                  'cv2', 'dotenv', 'chromedriver_autoinstaller'):

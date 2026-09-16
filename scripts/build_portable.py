@@ -116,6 +116,11 @@ def main():
     assert wrappers.is_relative_to(output.resolve())
     if wrappers.exists():
         shutil.rmtree(wrappers)
+    # Standalone OCR workers do not import Qt first. Put the wheel's redistributable
+    # MSVC DLLs beside python.exe so they never depend on a developer's system DLLs.
+    for pattern in ('msvcp140*.dll', 'vcruntime140*.dll', 'concrt140.dll'):
+        for dll in (output / 'runtime/python/Lib/site-packages/PySide6').glob(pattern):
+            shutil.copy2(dll, output / 'runtime/python' / dll.name)
     copy_contents(node_dir, output / 'runtime/node')
     copy_contents(sources['lecture'] / 'node_modules', output / 'runtime/lecture-node/node_modules')
     # MIT planner source and its upstream course snapshot; no personal planner database.
