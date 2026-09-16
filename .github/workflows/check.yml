@@ -4,6 +4,8 @@ on:
   pull_request:
 permissions:
   contents: read
+env:
+  PYTHONIOENCODING: utf-8
 jobs:
   windows:
     runs-on: windows-latest
