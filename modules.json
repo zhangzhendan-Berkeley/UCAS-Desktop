@@ -1,0 +1,62 @@
+[
+  {
+    "id": "iclass",
+    "name": "课程与讲座签到",
+    "path": "vendor/UCAS-Course-Sign-in",
+    "source": "https://github.com/lccipher/UCAS-Course-Sign-in.git",
+    "commit": "3bb182708b6d0d1868fd570743e6ac6d93808432",
+    "updated": "2026-06-10",
+    "capabilities": "轻新课堂课表查询、选定课程定时签到；讲座仅限同一 courseSchedId 二维码协议",
+    "status": "安装后需在本人的学校账号中验证；见 README",
+    "api_version": 1,
+    "external_opt_in": false
+  },
+  {
+    "id": "lecture",
+    "name": "人文讲座预约",
+    "path": "vendor/ucas-humanity-lecture-bot",
+    "source": "https://github.com/FYTJ/ucas-humanity-lecture-bot.git",
+    "commit": "8ec05b402577ecf045b807e21cf52f6c8ce27514",
+    "updated": "2026-03-18",
+    "capabilities": "按星期/时段检查、自动报名、定时巡检",
+    "status": "安装后需在本人的学校账号中验证；见 README",
+    "api_version": 1,
+    "external_opt_in": true
+  },
+  {
+    "id": "mooc",
+    "name": "国科大在线",
+    "path": "vendor/mooc-english",
+    "source": "https://github.com/wendychan03/ucas-mooc-helper.git",
+    "commit": "65d849d79c2a053bc6f194ad64a8f985f3aa7129",
+    "updated": "2026-05-31",
+    "capabilities": "2026 春季英语慕课视频、PDF 自动处理；测验/考试不覆盖",
+    "status": "安装后需在本人的学校账号中验证；见 README",
+    "api_version": 1,
+    "external_opt_in": false
+  },
+  {
+    "id": "planner",
+    "name": "选课规划",
+    "path": "vendor/UCAS-Course-Selector",
+    "source": "https://github.com/WindFromKadath/UCAS-Course-Selector.git",
+    "commit": "d7d12d48853bd6f30ca517bcf1716e1c39ab200e",
+    "updated": "2026-09-09",
+    "capabilities": "2026 秋季课表、校区筛选、冲突检测与导出",
+    "status": "安装后需在本人的学校账号中验证；见 README",
+    "api_version": 1,
+    "external_opt_in": false
+  },
+  {
+    "id": "selection",
+    "name": "自动选课",
+    "path": "vendor/UCAS-COURSE-SELECTION-SCRIPT",
+    "source": "https://github.com/G9B0ND/UCAS-COURSE-SELECTION-SCRIPT.git",
+    "commit": "7ddd1c2e4aa923cd082aa796de6a5b82bfdc1ca8",
+    "updated": "2026-09-06",
+    "capabilities": "新版 xkgo 选课、验证码、结果核对；本地补充 Windows Edge 与有界余量轮询",
+    "status": "安装后需在本人的学校账号中验证；见 README",
+    "api_version": 1,
+    "external_opt_in": true
+  }
+]

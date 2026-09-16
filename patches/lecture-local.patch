@@ -1,0 +1,162 @@
+diff --git a/src/login.ts b/src/login.ts
+index 5ef7003..752cc40 100644
+--- a/src/login.ts
++++ b/src/login.ts
+@@ -133,7 +133,7 @@ async function isSessionExpiredPage(page: Page): Promise<boolean> {
+ 
+ async function isAppStorePage(page: Page): Promise<boolean> {
+   const url = page.url();
+-  return url.includes("/appStore") || url.includes("/appStoreStudent");
++  return url.includes("/appStore") || url.includes("/appStoreStudent") || url.includes("/sepCard/card");
+ }
+ 
+ async function establishLectureSession(page: Page, config: AppConfig, logger: Logger): Promise<void> {
+@@ -143,6 +143,8 @@ async function establishLectureSession(page: Page, config: AppConfig, logger: Lo
+   }
+ 
+   if (await isAppStorePage(page)) {
++    const welcome = page.locator("#sepWelcomeOk");
++    if (await welcome.isVisible().catch(() => false)) await welcome.click();
+     await page.waitForTimeout(3000);
+     const portalHref = await findHumanityPortalHref(page);
+     if (!portalHref) {
+@@ -266,7 +268,7 @@ export function isManualVerificationSurface(url: string, haystack: string): bool
+     return true;
+   }
+ 
+-  if (url.includes("/appStore")) {
++  if (url.includes("/appStore") || url.includes("/sepCard/card")) {
+     return false;
+   }
+ 
+diff --git a/src/register.ts b/src/register.ts
+index 227e26d..518b6b6 100644
+--- a/src/register.ts
++++ b/src/register.ts
+@@ -21,9 +21,10 @@ export async function registerLecture(
+     .catch(() => undefined);
+ 
+   const clicked = await page.evaluate(
+-    ({ selector, rowIndex }) => {
++    ({ selector, title }) => {
+       const rows = Array.from(document.querySelectorAll(selector));
+-      const row = rows[rowIndex];
++      const matching = rows.filter(row => (row.textContent ?? "").replace(/\s+/g, " ").includes(title));
++      const row = matching.length === 1 ? matching[0] : undefined;
+       if (!row) {
+         return false;
+       }
+@@ -33,7 +34,7 @@ export async function registerLecture(
+       );
+       const target = candidates.find((element) => {
+         const text = (element.textContent ?? (element as HTMLInputElement).value ?? "").trim();
+-        return /预约|报名|选课/.test(text);
++        return /^(预约|报名|选课|立即预约|立即报名|我要报名|预约报名|报名参加)$/.test(text);
+       });
+ 
+       if (!target) {
+@@ -45,7 +46,7 @@ export async function registerLecture(
+     },
+     {
+       selector: rowSelector,
+-      rowIndex: lecture.rowIndex
++      title: lecture.title
+     }
+   );
+ 
+@@ -73,7 +74,7 @@ export async function registerLecture(
+       };
+     }
+ 
+-    if (/成功|已预约|已报名|已经预约过/.test(dialogMessage)) {
++    if (classifyRegistrationFeedback(dialogMessage) === "registered") {
+       return {
+         lectureId: lecture.id,
+         title: lecture.title,
+@@ -83,17 +84,19 @@ export async function registerLecture(
+     }
+   }
+ 
+-  const text = normalizeWhitespace(await page.locator("body").innerText().catch(() => ""));
+-  if (/成功|已预约|已报名/.test(text)) {
++  const targetTexts = await page.locator(rowSelector).allTextContents();
++  const matchingTexts = targetTexts.map(normalizeWhitespace).filter(text => text.includes(lecture.title));
++  const text = matchingTexts.length === 1 ? matchingTexts[0] : "";
++  if (classifyRegistrationFeedback(text) === "registered") {
+     return {
+       lectureId: lecture.id,
+       title: lecture.title,
+       outcome: "registered",
+-      detail: "页面反馈显示报名成功或已预约"
++      detail: "目标讲座所在行显示已预约或取消预约入口"
+     };
+   }
+ 
+-  if (/人数已满|预约已满|名额已满|满额/.test(text)) {
++  if (classifyRegistrationFeedback(text) === "full") {
+     return {
+       lectureId: lecture.id,
+       title: lecture.title,
+@@ -110,6 +113,13 @@ export async function registerLecture(
+   };
+ }
+ 
++export function classifyRegistrationFeedback(text: string): "registered" | "full" | "unknown" {
++  if (/失败|未成功|不成功|错误|异常/.test(text)) return "unknown";
++  if (/人数已满|预约已满|名额已满|满额|已超过人数限制/.test(text)) return "full";
++  if (/预约成功|报名成功|选课成功|已预约|已报名|已经预约过|取消预约|取消报名/.test(text)) return "registered";
++  return "unknown";
++}
++
+ async function clickPossibleConfirmButtons(page: Page, logger: Logger): Promise<void> {
+   const candidates = [
+     "button:has-text('确定')",
+diff --git a/src/workflow.ts b/src/workflow.ts
+index c7b99de..d55169f 100644
+--- a/src/workflow.ts
++++ b/src/workflow.ts
+@@ -1,4 +1,5 @@
+ import { chromium } from "playwright";
++import { existsSync } from "node:fs";
+ import type {
+   AppConfig,
+   LectureDecision,
+@@ -64,11 +65,13 @@ async function runAutomationCycle(
+   cycle: number
+ ): Promise<RunSummary> {
+   const browser = await chromium.launch({
+-    headless: config.headless
++    headless: config.headless,
++    channel: process.env.UCAS_BROWSER_CHANNEL || "msedge"
+   });
+ 
+   const context = await browser.newContext({
+-    ignoreHTTPSErrors: true
++    storageState: process.env.UCAS_STORAGE_STATE && existsSync(process.env.UCAS_STORAGE_STATE)
++      ? process.env.UCAS_STORAGE_STATE : undefined
+   });
+   const page = await context.newPage();
+   const state = await loadState(config.statePath);
+@@ -89,6 +92,9 @@ async function runAutomationCycle(
+     });
+ 
+     await ensureAuthenticated(page, config, logger);
++    if (process.env.UCAS_STORAGE_STATE) {
++      await context.storageState({ path: process.env.UCAS_STORAGE_STATE });
++    }
+     const snapshot = await extractLectureSnapshot(page);
+     const recordQuota =
+       snapshot.quota.bookedCount === null || snapshot.quota.requiredCount === null
+diff --git a/tests/config.test.ts b/tests/config.test.ts
+index e25922b..5d251c5 100644
+--- a/tests/config.test.ts
++++ b/tests/config.test.ts
+@@ -46,7 +46,7 @@ periods = [["00:00", "23:59"]]
+     expect(config.runMode).toBe("scheduled");
+     expect(config.schedule.runImmediatelyOnStart).toBe(false);
+     expect(config.logLevel).toBe("debug");
+-    expect(config.statePath.endsWith("tmp/state.json")).toBe(true);
++    expect(config.statePath).toBe(resolve("tmp/state.json"));
+     expect(config.schedule.periods).toEqual([
+       { startMinutes: 8 * 60, endMinutes: 12 * 60 },
+       { startMinutes: 14 * 60, endMinutes: 18 * 60 }
