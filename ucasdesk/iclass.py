@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 import re
 import threading
 import time
+import unicodedata
 from urllib.parse import urlsplit, parse_qs
 import requests
 
@@ -24,6 +25,20 @@ def course_id(value: str) -> str:
 
 def parse_time(value):
     return datetime.strptime(value, '%Y-%m-%d %H:%M:%S')
+
+
+def match_lecture_course(lecture, courses):
+    """Only accept a unique exact title/time match from the student's own timetable."""
+    normalize = lambda text: re.sub(r'\s+', '', unicodedata.normalize('NFKC', text or ''))
+    title = normalize(lecture.get('title'))
+    if not title or not lecture.get('start') or not lecture.get('end'):
+        return None
+    matches = [course for course in courses
+               if normalize(course.get('courseName')) == title
+               and course.get('classBeginTime') == lecture['start']
+               and course.get('classEndTime') == lecture['end']
+               and re.fullmatch(r'\d{7}', str(course.get('id', '')))]
+    return matches[0] if len(matches) == 1 else None
 
 
 def eligible(course, now=None, minutes_before=5):

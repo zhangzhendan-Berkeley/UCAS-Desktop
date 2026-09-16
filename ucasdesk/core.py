@@ -42,7 +42,10 @@ def redact(text: str, values=()) -> str:
     for value in values:
         if value and len(str(value)) >= 3:
             text = text.replace(str(value), '[REDACTED]')
-    text = re.sub(r'(?i)(password|sessionid|authorization|jtoken|enc|token)([=\s:"\x27]+)[^\s&,"\x27}]+', r'\1\2[REDACTED]', text)
+    text = re.sub(r'(?i)(password|sessionid|authorization|jtoken|enc|token|ticket)([=\s:"\x27]+)[^\s&,"\x27}]+', r'\1\2[REDACTED]', text)
+    text = re.sub(r'(?i)(/portal/site/[^\s"<>]*)', lambda m: re.sub(r'[a-f0-9]{24,}', '[REDACTED]', m.group(0), flags=re.I), text)
+    # Older adapters included the whole SEP profile card in error messages.
+    text = re.sub(r'(?im)(\bbody=)[^\r\n]*', r'\1[页面正文已省略]', text)
     return re.sub(r'\x1b\[[0-9;]*m', '', text)
 
 

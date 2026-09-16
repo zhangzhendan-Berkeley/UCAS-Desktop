@@ -18,4 +18,5 @@ jobs:
       - shell: pwsh
         run: |
           node --check adapters/lecture.mjs
+          node --check adapters/lecture_schedule.mjs
           node --check adapters/mooc.mjs

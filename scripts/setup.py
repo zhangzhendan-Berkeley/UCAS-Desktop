@@ -89,17 +89,26 @@ def prepare_mooc(repo):
 
 
 def prepare_lecture(repo):
-    patch = ROOT / 'patches/lecture-local.patch'
-    reverse = subprocess.run(['git', 'apply', '--reverse', '--check', str(patch)],
-                             cwd=repo, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    if reverse.returncode:
-        run(['git', 'apply', '--check', str(patch)], repo)
-        run(['git', 'apply', str(patch)], repo)
-    target = repo / 'tests/register.test.ts'
-    content = (ROOT / 'patches/lecture-register.test.ts').read_bytes()
-    if target.exists() and target.read_bytes() != content:
-        raise RuntimeError('讲座新增测试存在其他修改，不覆盖。')
-    target.write_bytes(content)
+    patches = [ROOT / 'patches' / name for name in
+               ('lecture-local.patch', 'lecture-sep-workbench.patch', 'lecture-table.patch')]
+    first_missing = 0
+    for index in reversed(range(len(patches))):
+        reverse = subprocess.run(['git', 'apply', '--ignore-space-change', '--reverse', '--check', str(patches[index])],
+                                 cwd=repo, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if reverse.returncode == 0:
+            first_missing = index + 1
+            break
+    for patch in patches[first_missing:]:
+        run(['git', 'apply', '--ignore-space-change', '--check', str(patch)], repo)
+        run(['git', 'apply', '--ignore-space-change', str(patch)], repo)
+    for source, destination in [('lecture-register.test.ts', 'tests/register.test.ts'),
+                                ('lecture-portal.ts', 'src/portal.ts'),
+                                ('lecture-portal.test.ts', 'tests/portal.test.ts')]:
+        target = repo / destination
+        content = (ROOT / 'patches' / source).read_bytes()
+        if target.exists() and target.read_bytes() != content:
+            raise RuntimeError(f'{destination} 存在其他修改，不覆盖。')
+        target.write_bytes(content)
 
 
 def main():

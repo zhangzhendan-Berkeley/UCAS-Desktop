@@ -1,0 +1,54 @@
+--- a/src/lecture-page.ts
++++ b/src/lecture-page.ts
+@@ -13,6 +13,7 @@
+ 
+ interface RawLectureRow {
+   rowIndex: number;
++  titleCell: string;
+   idCandidate: string;
+   cells: string[];
+   actionTexts: string[];
+@@ -23,8 +24,11 @@
+   const pageText = normalizeWhitespace(await page.locator("body").innerText().catch(() => ""));
+   const rawRows = await page.evaluate((selector) => {
+     const rows = Array.from(document.querySelectorAll(selector));
++    const titleIndex = Array.from(document.querySelectorAll("table th")).findIndex(th => th.textContent?.trim() === "讲座名称");
+     return rows.map((row, rowIndex) => {
+-      const cells = Array.from(row.querySelectorAll("th, td"))
++      const dataCells = row.querySelectorAll("td");
++      const titleCell = titleIndex >= 0 ? (dataCells[titleIndex]?.textContent ?? "").replace(/\s+/g, " ").trim() : "";
++      const cells = Array.from(dataCells)
+         .map((cell) => cell.textContent?.replace(/\s+/g, " ").trim() ?? "")
+         .filter(Boolean);
+       const actionTexts = Array.from(
+@@ -42,6 +46,7 @@
+ 
+       return {
+         rowIndex,
++        titleCell,
+         idCandidate,
+         cells,
+         actionTexts
+@@ -77,11 +82,11 @@
+     .catch(() => null);
+ 
+   const target = new URL(href ?? "/subject/humanityStudent", page.url()).toString();
+-  await page.goto(target, { waitUntil: "networkidle" });
++  await page.goto(target, { waitUntil: "domcontentloaded", referer: page.url() });
+   await page.waitForTimeout(3000);
+   const bodyText = normalizeWhitespace(await page.locator("body").innerText().catch(() => ""));
+   const quota = extractQuota(bodyText);
+-  await page.goto(returnUrl, { waitUntil: "networkidle" });
++  await page.goto(returnUrl, { waitUntil: "domcontentloaded", referer: page.url() });
+   await page.waitForTimeout(1500);
+   return quota;
+ }
+@@ -94,7 +99,7 @@
+ 
+   const startTimeText = extractStartTimeText(rawRow.cells);
+   const parsedStartTime = startTimeText ? parseLectureStart(startTimeText) : null;
+-  const title = inferTitle(rawRow.cells, combinedText);
++  const title = rawRow.titleCell || inferTitle(rawRow.cells, combinedText);
+   const location = inferLocation(rawRow.cells);
+   const statusText = inferStatusText(combinedText);
+   const terminalState = inferTerminalState(combinedText);

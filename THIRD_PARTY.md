@@ -33,6 +33,9 @@
 - `adapters/`：统一的 JSON 标准输入入口、独立浏览器会话、停止与重试策略、结果核验。
 - `patches/lecture-local.patch`：针对上述固定版本的 Windows Edge、SEP 新工作台、会话复用、目标行重新定位、保守结果判断适配；补丁中的原有上下文仍归原作者。
 - `patches/lecture-register.test.ts`：本项目新增的失败反馈与明确成功状态测试。
+- `patches/lecture-sep-workbench.patch`、`patches/lecture-portal.ts`：新版 SEP → 选课系统 → 指定讲座分类的会话跳转、隐藏菜单定位、Referer 保留及日志隐私处理；没有保存任何账号专属入口票据。
+- `patches/lecture-table.patch`：按“讲座名称”列读取标题、跳过表头，避免把系列专题当作具体场次。
+- `adapters/lecture_schedule.mjs`：科研讲座当前页的只读时间表查询；可在界面填入时间，签到场次仅从本人轻新课堂课表严格匹配或由二维码提供。
 - `scripts/setup.py`：从原仓库下载固定版本；在用户本地提取 `deal_video/deal_pdf`，将视频等待超时和 PDF 未确认改为明确失败。
 - `assets/app.svg`：本项目绘制的 U 与勾号图标，不是学校官方校徽。
 

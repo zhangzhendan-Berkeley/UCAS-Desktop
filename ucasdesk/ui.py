@@ -10,11 +10,11 @@ from PySide6.QtGui import QDesktopServices, QTextCursor, QFontDatabase, QFont, Q
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QPushButton, QLineEdit, QCheckBox, QSpinBox, QDateEdit, QTimeEdit, QDateTimeEdit, QFormLayout,
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QPlainTextEdit, QMessageBox,
-    QFileDialog, QStackedWidget, QListWidget, QGroupBox, QScrollArea, QSplitter, QTabWidget, QSystemTrayIcon, QMenu)
+    QFileDialog, QStackedWidget, QListWidget, QGroupBox, QScrollArea, QSplitter, QTabWidget, QSystemTrayIcon, QMenu, QDialog)
 
 from .core import ROOT, DATA, LOGS, VENDOR, PYTHON, NODE, Vault, Store, read_json, write_json, redact, check_updates, stage_updates
 from .jobs import Jobs
-from .iclass import IClass, course_id
+from .iclass import IClass, course_id, match_lecture_course
 from .api import LocalAPI
 
 STATUS = {'running': '运行中', 'stopping': '停止中', 'completed': '已结束', 'failed': '失败 / 有未完成项', 'stopped': '已停止', 'interrupted': '已中断'}
@@ -310,6 +310,15 @@ class Window(QMainWindow):
         layout.addWidget(self.course_table, 1)
         manual = QGroupBox('讲座 / 手动排课 ID：仅支持轻新课堂 courseSchedId 二维码')
         form = QVBoxLayout(manual)
+        self.science_rows = []
+        self.selected_science = None
+        self.science_status = label('科研讲座时间表：尚未查询', 'muted')
+        self.science_choose = button('选择讲座并填入时间', self.choose_science_lecture)
+        self.science_choose.setEnabled(False)
+        self.science_match = button('从轻新课堂自动匹配场次', self.match_science_lecture)
+        self.science_match.setEnabled(False)
+        form.addLayout(row(button('查询科研讲座时间表', self.query_science_schedule), self.science_choose, self.science_match))
+        form.addWidget(self.science_status)
         self.lecture_id = QLineEdit()
         self.lecture_id.setPlaceholderText('粘贴二维码解析出的完整链接，或 7 位排课 ID')
         form.addLayout(row(self.lecture_id, button('读取二维码图片', self.decode_qr), button('立即签到', self.sign_manual, True)))
@@ -322,6 +331,72 @@ class Window(QMainWindow):
                            button('建立讲座定时签到任务', self.schedule_lecture)))
         form.addWidget(label('如果讲座未出现在课表，需提供该场次的二维码 / 排课 ID 及时间。刷卡考勤和其他二维码协议尚不支持。', 'muted'))
         layout.addWidget(manual)
+
+    def query_science_schedule(self):
+        try:
+            payload = self.account('sep') | {'action': 'science-schedule', 'preview': True}
+            self.start_job('lecture', '科研讲座时间表 · 只读查询', NODE, [ROOT / 'adapters/lecture.mjs'], payload)
+        except Exception as exc:
+            self.error('请先在“人文讲座预约”填写 SEP 账号。' + str(exc))
+
+    def choose_science_lecture(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle('科研讲座时间表 · 选择后填入签到时间')
+        dialog.resize(1040, 530)
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(label('来自选课系统当前页面。请确认讲座与二维码是同一场；选择时间不会自动创建或提交签到任务。', 'muted'))
+        entries = table(['讲座名称', '时间', '地点'])
+        entries.setRowCount(len(self.science_rows))
+        for index, item in enumerate(self.science_rows):
+            for column, key in enumerate(('title', 'time', 'location')):
+                entries.setItem(index, column, QTableWidgetItem(item.get(key, '')))
+        layout.addWidget(entries)
+
+        def use_selected():
+            index = entries.currentRow()
+            if index < 0:
+                return
+            item = self.science_rows[index]
+            start = QDateTime.fromString(item.get('start', ''), 'yyyy-MM-dd HH:mm:ss')
+            end = QDateTime.fromString(item.get('end', ''), 'yyyy-MM-dd HH:mm:ss')
+            if not start.isValid() or not end.isValid() or end <= start:
+                self.error('该场时间不完整或无法识别，请在学校页面核实后手动填写。')
+                return
+            self.lecture_start.setDateTime(start)
+            self.lecture_end.setDateTime(end)
+            self.lecture_id.clear()
+            self.selected_science = item
+            self.science_match.setEnabled(True)
+            self.science_status.setText('时间已填，可匹配轻新课堂场次或补充二维码：' + item['title'])
+            dialog.accept()
+
+        layout.addLayout(row(button('填入选中场次时间', use_selected, True), button('取消', dialog.reject)))
+        dialog.exec()
+
+    def match_science_lecture(self):
+        if not self.selected_science:
+            return
+        try:
+            lecture = dict(self.selected_science)
+            account = self.account('iclass')
+            date = lecture['start'][:10].replace('-', '')
+
+            def received(courses):
+                if self.selected_science != lecture:
+                    return
+                self.course_date.setDate(QDate.fromString(date, 'yyyyMMdd'))
+                self.populate_courses(courses)
+                matched = match_lecture_course(lecture, courses)
+                if matched:
+                    self.lecture_id.setText(matched['id'])
+                    self.science_status.setText('已匹配本人课表中的唯一同名、同起止时间场次。请确认后建立定时签到任务。')
+                else:
+                    self.lecture_id.clear()
+                    self.science_status.setText('本人轻新课堂课表中没有唯一匹配项，仍需现场二维码；不会用讲座系统编号推算。')
+
+            self.background(lambda: IClass(**account).query(date), received)
+        except Exception as exc:
+            self.error(str(exc))
 
     def query_courses(self):
         try:
@@ -622,9 +697,20 @@ class Window(QMainWindow):
             return
         self.current_log = self.job_table.item(index, 0).data(Qt.UserRole)
         path = LOGS / f'{self.current_log}.log'
-        self.log_view.setPlainText(path.read_text(encoding='utf-8')[-150000:] if path.exists() else '等待任务输出…')
+        self.log_view.setPlainText(redact(path.read_text(encoding='utf-8')[-150000:], self.vault.secret_values()) if path.exists() else '等待任务输出…')
 
     def receive_output(self, job_id, text):
+        for line in text.splitlines():
+            if not line.startswith('{'):
+                continue
+            try:
+                message = json.loads(line)
+                if message.get('event') == 'lecture.science-schedule' and isinstance(message.get('rows'), list):
+                    self.science_rows = message['rows']
+                    self.science_choose.setEnabled(bool(self.science_rows))
+                    self.science_status.setText(f'已查询 {len(self.science_rows)} 场；点击选择并填入时间')
+            except (ValueError, AttributeError):
+                pass
         if job_id == self.current_log:
             self.log_view.moveCursor(QTextCursor.MoveOperation.End)
             self.log_view.insertPlainText(text)

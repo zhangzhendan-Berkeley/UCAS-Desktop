@@ -1,0 +1,241 @@
+--- a/src/login.ts
++++ b/src/login.ts
+@@ -3,6 +3,7 @@
+ import { Logger } from "./log.js";
+ import { captchaIsVisible, refreshCaptcha, solveCaptcha } from "./captcha.js";
+ import { normalizeWhitespace } from "./util.js";
++import { findPortalEntry, findLectureBridge, waitForEntry, safeLocation } from "./portal.js";
+ 
+ const loginFormSelector = "#userName1, input[name='userName1']";
+ const manualVerificationWaitMs = 10 * 60 * 1000;
+@@ -18,10 +19,10 @@
+ ];
+ 
+ export async function ensureAuthenticated(page: Page, config: AppConfig, logger: Logger): Promise<void> {
+-  await page.goto(config.humanityLectureUrl, { waitUntil: "domcontentloaded" });
++  await page.goto(config.humanityLectureUrl, { waitUntil: "domcontentloaded", referer: page.url().startsWith("http") ? page.url() : undefined });
+   await page.waitForTimeout(1000);
+ 
+-  if (await isLecturePage(page)) {
++  if (await isLecturePage(page, config.humanityLectureUrl)) {
+     logger.info("auth.already-valid");
+     return;
+   }
+@@ -35,8 +36,7 @@
+       await handleManualVerificationIfNeeded(page, config, logger);
+ 
+       if (await isLoginPage(page)) {
+-        const errorText = await collectLoginError(page);
+-        logger.warn("auth.login-still-open", { attempt, errorText });
++        logger.warn("auth.login-still-open", { attempt, reason: "login-form-still-visible" });
+ 
+         if (await captchaIsVisible(page)) {
+           await refreshCaptcha(page, logger);
+@@ -45,17 +45,17 @@
+         continue;
+       }
+     } else {
+-      logger.info("auth.sep-session-reused", { attempt, url: page.url() });
++      logger.info("auth.sep-session-reused", { attempt, url: safeLocation(page.url()) });
+     }
+ 
+     await establishLectureSession(page, config, logger);
+ 
+-    if (await isLecturePage(page)) {
++    if (await isLecturePage(page, config.humanityLectureUrl)) {
+       logger.info("auth.success", { attempt });
+       return;
+     }
+ 
+-    logger.warn("auth.redirected-unexpectedly", { attempt, url: page.url() });
++    logger.warn("auth.redirected-unexpectedly", { attempt, url: safeLocation(page.url()) });
+   }
+ 
+   throw new Error("登录失败：超过最大尝试次数，可能是凭据错误、验证码识别失败或站点策略限制");
+@@ -66,7 +66,7 @@
+     return;
+   }
+ 
+-  await page.goto(config.loginUrl, { waitUntil: "domcontentloaded" });
++  await page.goto(config.loginUrl, { waitUntil: "domcontentloaded", referer: page.url().startsWith("http") ? page.url() : undefined });
+   await page.waitForTimeout(1000);
+ }
+ 
+@@ -100,30 +100,16 @@
+   await page.keyboard.press("Enter");
+ }
+ 
+-async function collectLoginError(page: Page): Promise<string> {
+-  const texts = await page
+-    .locator(".error, .alert, #messageBox, .help-block")
+-    .allInnerTexts()
+-    .catch(() => []);
+-
+-  return normalizeWhitespace(texts.join(" "));
+-}
+-
+ async function isLoginPage(page: Page): Promise<boolean> {
+   return page.locator(loginFormSelector).first().isVisible().catch(() => false);
+ }
+ 
+-async function isLecturePage(page: Page): Promise<boolean> {
+-  if (page.url().includes("/subject/humanityLecture") && !(await isSessionExpiredPage(page))) {
+-    return true;
+-  }
+-
+-  const title = normalizeWhitespace(await page.title().catch(() => ""));
+-  if (title.includes("人文") || title.includes("讲座")) {
+-    return true;
+-  }
+-
+-  return false;
++export async function isLecturePage(page: Page, target = "https://xkcts.ucas.ac.cn:8443/subject/humanityLecture"): Promise<boolean> {
++  const location = new URL(page.url());
++  if (location.hostname !== "xkcts.ucas.ac.cn" || location.pathname !== new URL(target).pathname
++      || await isSessionExpiredPage(page)) return false;
++  const headings = await page.locator("table th").allTextContents().catch(() => []);
++  return headings.some(text => text.includes("讲座名称")) && headings.some(text => text.includes("讲座时间"));
+ }
+ 
+ async function isSessionExpiredPage(page: Page): Promise<boolean> {
+@@ -136,61 +122,38 @@
+   return url.includes("/appStore") || url.includes("/appStoreStudent") || url.includes("/sepCard/card");
+ }
+ 
+-async function establishLectureSession(page: Page, config: AppConfig, logger: Logger): Promise<void> {
++export async function establishLectureSession(page: Page, config: AppConfig, logger: Logger): Promise<void> {
+   if (!(await isAppStorePage(page))) {
+-    await page.goto(config.loginUrl, { waitUntil: "domcontentloaded" });
+-    await page.waitForTimeout(1000);
+-  }
+-
+-  if (await isAppStorePage(page)) {
+-    const welcome = page.locator("#sepWelcomeOk");
+-    if (await welcome.isVisible().catch(() => false)) await welcome.click();
+-    await page.waitForTimeout(3000);
+-    const portalHref = await findHumanityPortalHref(page);
+-    if (!portalHref) {
+-      const title = normalizeWhitespace(await page.title().catch(() => ""));
+-      const bodyText = normalizeWhitespace(await page.locator("body").innerText().catch(() => ""));
+-      throw new Error(
+-        `SEP 门户页中未找到“人文讲座报名”入口，无法建立讲座系统会话；url=${page.url()} title=${title} body=${bodyText.slice(0, 240)}`
+-      );
+-    }
+-
+-    const resolved = new URL(portalHref, page.url()).toString();
+-    logger.info("auth.portal-entry", { portalHref: resolved });
+-    await page.goto(resolved, { waitUntil: "domcontentloaded" });
+-    await page.waitForTimeout(2000);
+-  }
+-
+-  await page.goto(config.humanityLectureUrl, { waitUntil: "domcontentloaded" });
+-  await page.waitForTimeout(1000);
+-}
+-
+-async function findHumanityPortalHref(page: Page): Promise<string | null> {
+-  const href = await page
+-    .evaluate(() => {
+-      const links = Array.from(document.querySelectorAll("a"))
+-        .map((anchor) => ({
+-          text: (anchor.textContent ?? "").replace(/\s+/g, " ").trim(),
+-          href: anchor.getAttribute("href")?.trim() ?? ""
+-        }))
+-        .filter((link) => link.href);
+-
+-      const byText = links.find((link) => link.text.includes("人文讲座报名"));
+-      if (byText?.href) {
+-        return byText.href;
+-      }
+-
+-      const byHref = links.find(
+-        (link) =>
+-          link.href.includes("humanityNotice") ||
+-          link.href.includes("humanityLecture") ||
+-          link.href.includes("xkcts.ucas.ac.cn")
+-      );
+-      return byHref?.href ?? null;
+-    })
+-    .catch(() => null);
+-
+-  return href && href.trim() ? href.trim() : null;
++    await page.goto(config.loginUrl, { waitUntil: "domcontentloaded", referer: page.url().startsWith("http") ? page.url() : undefined });
++  }
++  const welcome = page.locator("#sepWelcomeOk");
++  if (await welcome.isVisible().catch(() => false)) await welcome.click();
++
++  const portalHref = await waitForEntry(() => findPortalEntry(page), page);
++  if (!portalHref) {
++    throw new Error(`SEP 中未找到人文讲座或选课系统入口；请确认已登录且账号有相应权限。位置：${safeLocation(page.url())}`);
++  }
++  logger.info("auth.portal-entry", { location: safeLocation(portalHref) });
++  await page.goto(portalHref, { waitUntil: "domcontentloaded", referer: page.url().startsWith("http") ? page.url() : undefined });
++  await page.waitForURL(url => ["xkgo.ucas.ac.cn", "xkcts.ucas.ac.cn"].includes(url.hostname), { timeout: 15000 });
++
++  // New SEP opens xkgo first. Its humanities menu contains a per-session SSO
++  // bridge into xkcts; never hard-code or log that account-specific URL.
++  if (new URL(page.url()).hostname === "xkgo.ucas.ac.cn") {
++    const bridge = await waitForEntry(() => findLectureBridge(page, new URL(config.humanityLectureUrl).pathname === "/subject/lecture" ? "science" : "humanity"), page);
++    if (!bridge) throw new Error("选课系统中未找到对应讲座分类的“讲座预告”入口，请核对账号权限或菜单变化。");
++    logger.info("auth.lecture-bridge", { location: safeLocation(bridge) });
++    await page.goto(bridge, { waitUntil: "domcontentloaded", referer: page.url().startsWith("http") ? page.url() : undefined });
++    await page.waitForURL(url => url.hostname === "xkcts.ucas.ac.cn", { timeout: 15000 });
++  }
++
++  if (new URL(page.url()).pathname !== new URL(config.humanityLectureUrl).pathname) {
++    await page.goto(config.humanityLectureUrl, { waitUntil: "domcontentloaded", referer: page.url() });
++  }
++  await page.locator("table th").first().waitFor({ timeout: 10000 }).catch(() => {});
++  if (!(await isLecturePage(page, config.humanityLectureUrl))) {
++    throw new Error(`讲座会话尚未建立或页面结构已变化；位置：${safeLocation(page.url())}`);
++  }
+ }
+ 
+ async function handleManualVerificationIfNeeded(
+@@ -204,14 +167,12 @@
+   }
+ 
+   logger.warn("auth.manual-verification-required", {
+-    url: initialSurface.url,
+-    title: initialSurface.title,
+-    snippet: initialSurface.snippet
++    url: safeLocation(initialSurface.url)
+   });
+ 
+   if (config.headless) {
+     throw new Error(
+-      `检测到需要人工完成的新设备/邮箱验证，但当前是 headless 模式；url=${initialSurface.url} title=${initialSurface.title}`
++      `检测到需要人工完成的新设备/邮箱验证，但当前是 headless 模式；位置：${safeLocation(initialSurface.url)}`
+     );
+   }
+ 
+@@ -226,7 +187,7 @@
+     const activeSurface = await findManualVerificationSurface(page);
+     if (!activeSurface) {
+       logger.info("auth.manual-verification-cleared", {
+-        url: page.url()
++        url: safeLocation(page.url())
+       });
+       return;
+     }
+@@ -237,7 +198,7 @@
+ 
+ async function findManualVerificationSurface(
+   page: Page
+-): Promise<{ url: string; title: string; snippet: string } | null> {
++): Promise<{ url: string } | null> {
+   const pages = page
+     .context()
+     .pages()
+@@ -253,11 +214,7 @@
+       continue;
+     }
+ 
+-    return {
+-      url,
+-      title,
+-      snippet: bodyText.slice(0, 240)
+-    };
++    return { url };
+   }
+ 
+   return null;
