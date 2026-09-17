@@ -9,6 +9,8 @@ import subprocess
 import tempfile
 import zipfile
 
+from .core import _child_options
+
 MARKERS = {'lecture': 'dist/src/workflow.js', 'selection': 'course_flow.py', 'mooc': 'package.json'}
 
 
@@ -147,7 +149,7 @@ def install_module(root, module, manifest, log=print):
             shutil.copytree(root / 'runtime/lecture-node/node_modules', staging / 'node_modules')
             log('正在准备讲座模块…', flush=True)
             subprocess.run([str(NODE), str(staging / 'node_modules/typescript/bin/tsc'), '-p', str(staging / 'tsconfig.json')],
-                           cwd=staging, env=child_env(), check=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                           cwd=staging, env=child_env(), check=True, **_child_options())
         (staging / '.ucas-source.json').write_text(json.dumps({'commit': module['commit'], 'source': module['source']}) + '\n')
         # Only rename into a previously absent, verified target; failed builds stay temporary.
         staging.rename(target)

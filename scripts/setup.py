@@ -119,17 +119,18 @@ def main():
                         help='另行从原仓库获取未附独立 LICENSE 的人文预约与选课依赖；请先阅读 THIRD_PARTY.md')
     parser.add_argument('--check', action='store_true', help='只检查 Python/Git/Node/npm 环境')
     args = parser.parse_args()
-    if os.name != 'nt' or not ((3, 10) <= sys.version_info[:2] < (3, 13)):
-        raise RuntimeError('请使用 Windows 10/11 x64 与 Python 3.10–3.12。')
+    if sys.version_info[:2] < (3, 10) or sys.version_info[:2] >= (3, 13):
+        raise RuntimeError('需要 Python 3.10–3.12。')
     tool('git')
-    node, npm = tool('node'), tool('npm.cmd')
+    node = tool('node')
+    npm = tool('npm.cmd' if os.name == 'nt' else 'npm')
     version = run([node, '--version'], capture=True)
     if int(version.lstrip('v').split('.')[0]) < 22:
         raise RuntimeError('需要 Node.js 22 或以上；建议 Node.js 24 LTS。')
     print(f'Python {sys.version.split()[0]} / Node {version} / Git / npm: ready', flush=True)
     if args.check:
         return
-    python = ROOT / '.venv/Scripts/python.exe'
+    python = ROOT / ('.venv/Scripts/python.exe' if os.name == 'nt' else '.venv/bin/python')
     if not python.exists():
         venv.EnvBuilder(with_pip=True).create(ROOT / '.venv')
     run([python, '-m', 'pip', 'install', '-r', ROOT / 'requirements.txt'])
@@ -146,8 +147,11 @@ def main():
             prepare_mooc(repo)
         if module['id'] == 'lecture':
             run([npm, 'run', 'build'], repo)
-    run([python, ROOT / 'scripts/build_launcher.py'])
-    print('安装完成。双击 UCAS桌面助手.exe 或 启动调试.cmd。学校功能需自行登录验证。')
+    if os.name == 'nt':
+        run([python, ROOT / 'scripts/build_launcher.py'])
+        print('安装完成。双击 UCAS桌面助手.exe 或 启动调试.cmd。学校功能需自行登录验证。')
+    else:
+        print('安装完成。macOS 请运行：' + str(python) + ' app.py；学校功能需自行登录验证。')
 
 
 if __name__ == '__main__':

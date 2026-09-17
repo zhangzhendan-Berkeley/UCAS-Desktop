@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -25,12 +26,14 @@ class Transport:
 
 
 class Tests(unittest.TestCase):
+    @unittest.skipUnless(os.name == 'nt', 'Windows DPAPI only')
     def test_dpapi_roundtrip(self):
         original = '账号与密码测试'.encode()
         encrypted = protect(original)
         self.assertNotIn(original, encrypted)
         self.assertEqual(protect(encrypted, decrypt=True), original)
 
+    @unittest.skipUnless(os.name == 'nt', 'Windows DPAPI only')
     def test_vault_remember_and_forget(self):
         with tempfile.TemporaryDirectory() as tmp, patch('ucasdesk.core.DATA', Path(tmp)):
             vault = Vault()

@@ -1,6 +1,7 @@
 from __future__ import annotations
 import codecs
 import json
+import os
 import subprocess
 from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, Signal
 from .core import ROOT, LOGS, child_env, redact
@@ -102,8 +103,11 @@ class Jobs(QObject):
         self.store.status(job_id, 'stopping')
         pid = item['process'].processId()
         if pid:
-            subprocess.run(['taskkill', '/PID', str(pid), '/T', '/F'], stdout=subprocess.DEVNULL,
-                           stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW, timeout=15)
+            if os.name == 'nt':
+                subprocess.run(['taskkill', '/PID', str(pid), '/T', '/F'], stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW, timeout=15)
+            else:
+                item['process'].kill()
         item['process'].kill()
         self.changed.emit()
 

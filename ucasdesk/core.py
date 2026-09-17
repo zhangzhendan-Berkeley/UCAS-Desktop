@@ -11,6 +11,7 @@ import secrets
 import shutil
 import sqlite3
 import subprocess
+import sys
 from datetime import datetime
 from typing import Protocol
 
@@ -21,10 +22,14 @@ VENDOR = ROOT / 'vendor'
 PYTHON = ROOT / 'runtime/python/python.exe'
 if not PYTHON.is_file():
     PYTHON = ROOT / '.venv/Scripts/python.exe'
+if not PYTHON.is_file():
+    PYTHON = ROOT / '.venv/bin/python'
+if not PYTHON.is_file():
+    PYTHON = Path(sys.executable)
 # An explicit override or a system Node installation; no developer-machine paths.
 NODE = ROOT / 'runtime/node/node.exe'
 if not NODE.is_file():
-    NODE = Path(os.environ.get('UCAS_NODE') or shutil.which('node') or 'node.exe')
+    NODE = Path(os.environ.get('UCAS_NODE') or shutil.which('node') or 'node')
 for directory in (DATA, LOGS):
     directory.mkdir(exist_ok=True)
 
@@ -51,6 +56,36 @@ def redact(text: str, values=()) -> str:
     # Older adapters included the whole SEP profile card in error messages.
     text = re.sub(r'(?im)(\bbody=)[^\r\n]*', r'\1[页面正文已省略]', text)
     return re.sub(r'\x1b\[[0-9;]*m', '', text)
+
+
+def _keychain_get(key):
+    if sys.platform != 'darwin' or not shutil.which('security'):
+        return None
+    result = subprocess.run(
+        ['security', 'find-generic-password', '-s', 'UCAS-Desktop', '-a', key, '-w'],
+        capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        return None
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return None
+
+
+def _keychain_set(key, value):
+    if sys.platform != 'darwin' or not shutil.which('security'):
+        raise RuntimeError('macOS 账号保存需要系统 security 命令。')
+    secret = json.dumps(value, ensure_ascii=False)
+    result = subprocess.run(
+        ['security', 'add-generic-password', '-U', '-s', 'UCAS-Desktop', '-a', key, '-w', secret],
+        capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        raise RuntimeError('无法写入 macOS 钥匙串：' + (result.stderr.strip() or '未知错误'))
+
+
+def _child_options():
+    flag = getattr(subprocess, 'CREATE_NO_WINDOW', None)
+    return {'creationflags': flag} if flag is not None else {}
 
 
 class Blob(ctypes.Structure):
@@ -82,7 +117,14 @@ class Vault:
         self.path = DATA / 'accounts.dpapi'
         self.accounts = {}
         self.warning = ''
-        if self.path.exists():
+        if sys.platform == 'darwin':
+            for key in ('sep', 'iclass'):
+                account = _keychain_get(key)
+                if account:
+                    self.accounts[key] = account
+            if self.path.exists():
+                self.warning = '检测到 Windows 账号文件；macOS 无法读取，请重新输入账号。'
+        elif self.path.exists():
             try:
                 self.accounts = json.loads(protect(self.path.read_bytes(), decrypt=True))
             except Exception:
@@ -93,6 +135,14 @@ class Vault:
 
     def set(self, key, username, password, remember=True):
         account = {'username': username.strip(), 'password': password}
+        if sys.platform == 'darwin':
+            if remember:
+                _keychain_set(key, account)
+            else:
+                subprocess.run(['security', 'delete-generic-password', '-s', 'UCAS-Desktop', '-a', key],
+                               capture_output=True, check=False)
+            self.accounts[key] = account
+            return
         stored = {}
         if self.path.exists():
             try:
@@ -148,10 +198,17 @@ class Connector(Protocol):
 
 
 def browser_path():
-    candidates = [
-        Path(os.environ.get('PROGRAMFILES(X86)', 'C:/Program Files (x86)')) / 'Microsoft/Edge/Application/msedge.exe',
-        Path(os.environ.get('PROGRAMFILES', 'C:/Program Files')) / 'Google/Chrome/Application/chrome.exe',
-    ]
+    if sys.platform == 'darwin':
+        candidates = [
+            Path('/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge'),
+            Path('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'),
+            Path('/Applications/Chromium.app/Contents/MacOS/Chromium'),
+        ]
+    else:
+        candidates = [
+            Path(os.environ.get('PROGRAMFILES(X86)', 'C:/Program Files (x86)')) / 'Microsoft/Edge/Application/msedge.exe',
+            Path(os.environ.get('PROGRAMFILES', 'C:/Program Files')) / 'Google/Chrome/Application/chrome.exe',
+        ]
     for path in candidates:
         if path.is_file():
             return path
@@ -170,7 +227,7 @@ def child_env(extra=None):
 
 def git_output(args, cwd):
     return subprocess.check_output(['git', *args], cwd=str(cwd), timeout=60,
-                                   creationflags=subprocess.CREATE_NO_WINDOW, encoding='utf-8').strip()
+                                   encoding='utf-8', **_child_options()).strip()
 
 
 def check_updates():

@@ -274,7 +274,7 @@ class Window(DashboardMixin, QMainWindow):
         password = QLineEdit(existing['password'])
         password.setEchoMode(QLineEdit.Password)
         password.setPlaceholderText('密码只在本机使用')
-        remember = QCheckBox('记住账号密码（使用当前 Windows 账户加密）')
+        remember = QCheckBox('记住账号密码（使用系统安全存储）')
         remember.setChecked(True)
         form.addRow('发件邮箱' if key == 'email' else '账号', user)
         form.addRow('授权码 / 专用密码' if key == 'email' else '密码', password)
@@ -296,7 +296,7 @@ class Window(DashboardMixin, QMainWindow):
         return self.vault.get(key).copy()
 
     def build_profile(self):
-        layout = self.page('个人信息', '账号由当前 Windows 用户加密保存在本机；课程、讲座、已选同步与自动选课共用。')
+        layout = self.page('个人信息', '账号由当前系统的安全存储保存在本机；课程、讲座、已选同步与自动选课共用。')
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         widget = QWidget()
