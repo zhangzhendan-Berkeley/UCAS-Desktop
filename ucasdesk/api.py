@@ -31,8 +31,14 @@ class LocalAPI:
                 self.send_header('X-Content-Type-Options', 'nosniff')
                 self.send_header('Referrer-Policy', 'no-referrer')
                 self.send_header('X-Frame-Options', 'DENY')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.send_header('Access-Control-Allow-Headers', 'Authorization')
+                self.send_header('Access-Control-Allow-Methods', 'GET, OPTIONS')
                 self.end_headers()
                 self.wfile.write(data)
+
+            def do_OPTIONS(self):
+                self.send(b'', status=204)
 
             def do_GET(self):
                 path = urlsplit(self.path).path

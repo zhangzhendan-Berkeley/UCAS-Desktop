@@ -82,10 +82,17 @@ class Tests(unittest.TestCase):
             try:
                 with self.assertRaises(HTTPError) as ctx: urlopen(base + '/v1/jobs')
                 self.assertEqual(ctx.exception.code, 401)
-                req = Request(base + '/v1/jobs', headers={'Authorization': 'Bearer ' + api.token})
-                data = json.load(urlopen(req))
+                req = Request(base + '/v1/jobs', headers={'Authorization': 'Bearer ' + api.token, 'Origin': 'https://example.vercel.app'})
+                with urlopen(req) as response:
+                    data = json.load(response)
+                    self.assertEqual(response.headers['Access-Control-Allow-Origin'], '*')
+                    self.assertEqual(response.headers['Access-Control-Allow-Headers'], 'Authorization')
                 self.assertEqual(data[0]['id'], job_id)
                 self.assertNotIn('log', data[0])
+                options = Request(base + '/v1/jobs', method='OPTIONS', headers={'Origin': 'https://example.vercel.app'})
+                with urlopen(options) as response:
+                    self.assertEqual(response.status, 204)
+                    self.assertEqual(response.headers['Access-Control-Allow-Methods'], 'GET, OPTIONS')
                 with self.assertRaises(HTTPError) as ctx: urlopen(Request(base + '/v1/jobs', data=b'{}'))
                 self.assertEqual(ctx.exception.code, 405)
             finally: api.close()
