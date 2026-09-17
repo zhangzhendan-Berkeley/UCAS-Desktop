@@ -88,6 +88,21 @@ def _child_options():
     return {'creationflags': flag} if flag is not None else {}
 
 
+KEY_INDEX = '__index'
+
+
+def _keychain_keys():
+    index = _keychain_get(KEY_INDEX)
+    return list(index.get('keys', [])) if isinstance(index, dict) else []
+
+
+def _keychain_remember(key, remember):
+    keys = [k for k in _keychain_keys() if k != key]
+    if remember:
+        keys.append(key)
+    _keychain_set(KEY_INDEX, {'keys': keys})
+
+
 class Blob(ctypes.Structure):
     _fields_ = [('cbData', wintypes.DWORD), ('pbData', ctypes.POINTER(ctypes.c_ubyte))]
 
@@ -118,9 +133,9 @@ class Vault:
         self.accounts = {}
         self.warning = ''
         if sys.platform == 'darwin':
-            for key in ('sep', 'iclass'):
+            for key in _keychain_keys():
                 account = _keychain_get(key)
-                if account:
+                if isinstance(account, dict):
                     self.accounts[key] = account
             if self.path.exists():
                 self.warning = '检测到 Windows 账号文件；macOS 无法读取，请重新输入账号。'
@@ -141,6 +156,7 @@ class Vault:
             else:
                 subprocess.run(['security', 'delete-generic-password', '-s', 'UCAS-Desktop', '-a', key],
                                capture_output=True, check=False)
+            _keychain_remember(key, remember)
             self.accounts[key] = account
             return
         stored = {}
