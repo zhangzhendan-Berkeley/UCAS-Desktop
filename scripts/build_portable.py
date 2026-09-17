@@ -71,7 +71,7 @@ def trim_qt(output):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--version', default='0.3.1')
+    parser.add_argument('--version', default='0.3.2')
     parser.add_argument('--no-zip', action='store_true')
     parser.add_argument('--resume', action='store_true', help='Resume this version only before it has ever been run')
     args = parser.parse_args()

@@ -4,13 +4,14 @@ import sqlite3
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (QGroupBox, QVBoxLayout, QGridLayout, QHBoxLayout,
-    QTableWidgetItem, QDialog, QScrollArea, QWidget, QCheckBox, QComboBox, QColorDialog)
+    QTableWidgetItem, QDialog, QScrollArea, QWidget, QCheckBox, QComboBox, QColorDialog, QHeaderView)
 from .core import DATA, ROOT, NODE, read_json, write_json, redact
 from .activity import scope, MILESTONES, NOTICE_DEFAULTS
 from .presentation import color_item, enable_copy
 from .mail import send_mail, validate_address
 from .overview_refresh import RefreshBatch, LECTURE_PARTS, read_iclass_overview
 from .dashboard_widgets import StatusCard, StatTile
+from .catalog import colors, PALETTE
 
 
 class DashboardMixin:
@@ -86,9 +87,15 @@ class DashboardMixin:
         layout.addWidget(self.today_table)
         self.week_status = label('规划周课表 · 使用选课规划中选定的教学周，非自动推断当前教学周', 'muted')
         layout.addWidget(self.week_status)
+        self.week_legend = label('')
+        self.week_legend.setTextFormat(Qt.RichText)
+        self.week_legend.setText('　'.join(f'<span style="color:{fg}">● {name}</span>' for name, (_, fg) in PALETTE.items()) + '　<span style="color:#a43f40">● 时间冲突</span>')
+        layout.addWidget(self.week_legend)
         self.home_week = table(['周一', '周二', '周三', '周四', '周五', '周六', '周日'])
-        self.home_week.setMinimumHeight(165)
-        self.home_week.setMaximumHeight(240)
+        self.home_week.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.home_week.verticalHeader().setStyleSheet('QHeaderView::section {padding:4px; font-size:12px;}')
+        self.home_week.setMinimumHeight(440)
+        self.home_week.setMaximumHeight(600)
         layout.addWidget(self.home_week)
         self.mail_status_label = label('重要消息邮件提醒：未启用', 'muted')
         layout.addWidget(self.mail_status_label)
@@ -147,11 +154,17 @@ class DashboardMixin:
         rows = today.get('payload', {}).get('courses', []) if today.get('payload', {}).get('date') == datetime.now().strftime('%Y%m%d') else []
         self.today_status.setText('今日课程 · ' + (f'共 {len(rows)} 节 · 查询时间 {today["at"].replace("T", " ")}' if today and today['payload'].get('date') == datetime.now().strftime('%Y%m%d') else '尚未查询，点击上方刷新'))
         self.today_table.setRowCount(len(rows))
+        categories = self.home_course_categories(state)
         for index, course in enumerate(rows):
             signed = str(course.get('signStatus')) == '1'
+            category = categories.get(course.get('courseName', ''), '未分类')
+            bg, fg = colors(category)
             for col, value in enumerate([course.get('courseName', ''), course.get('teacherName', ''), course.get('classBeginTime', ''), course.get('classEndTime', ''), '已签到' if signed else '未签到']):
                 item = QTableWidgetItem(str(value))
-                if col in (0, 4): color_item(item, 'success' if signed else 'pending')
+                item.setBackground(QColor(bg))
+                item.setForeground(QColor(fg))
+                item.setToolTip('课程类别：' + category + '\n' + str(value))
+                if col == 4: color_item(item, 'success' if signed else 'pending')
                 self.today_table.setItem(index, col, item)
         self.refresh_home_week(state)
         results = [r for identity in self.notice_scopes() if (r := self.activity.mail_status(identity))]
@@ -303,7 +316,7 @@ class DashboardMixin:
             card.configure_color(color)
             card.configure_detail(config.get('detail', 'detailed'))
         for key, widgets in {'stats': [self.home_stats, self.achievement_notice], 'today': [self.today_status, self.today_table],
-                'week': [self.week_status, self.home_week], 'attendance': [self.attendance_status], 'mail': [self.mail_status_label]}.items():
+                'week': [self.week_status, self.week_legend, self.home_week], 'attendance': [self.attendance_status], 'mail': [self.mail_status_label]}.items():
             for widget in widgets: widget.setVisible(preferences.get('sections', {}).get(key, True))
 
     def customize_home(self):
@@ -349,6 +362,23 @@ class DashboardMixin:
         layout.addLayout(row(button('恢复默认布局', lambda: save(True)), button('取消', dialog.reject), button('保存布局', lambda: save(), True)))
         dialog.exec()
 
+    def home_course_categories(self, state):
+        """Only assign a today's-course category when the local name is unambiguous."""
+        if self.planner:
+            records = [(c.name, self.planner.catalog.info(c)['category']) for c in self.planner.catalog.courses]
+        else:
+            path = self.activity.path.parent / 'planner' / PathName(state.get('db_path', 'courses.db'))
+            records = []
+            if path.is_file():
+                try:
+                    db = sqlite3.connect(path.as_uri() + '?mode=ro', uri=True)
+                    try: records = db.execute('SELECT course_name, attribute FROM courses').fetchall()
+                    finally: db.close()
+                except sqlite3.Error: pass
+        categories = {}
+        for name, category in records: categories.setdefault(name, set()).add(category or '未分类')
+        return {name: next(iter(values)) for name, values in categories.items() if len(values) == 1}
+
     def refresh_home_week(self, state):
         # Use the loaded planner when present; otherwise a read-only snapshot of its own DB.
         week = self.planner.week_view.current_week() if self.planner else state.get('ui', {}).get('week', 1)
@@ -356,7 +386,8 @@ class DashboardMixin:
         rows = []
         if self.planner:
             for course in self.planner.db.get_courses_with_schedules(list(self.planner.selected)):
-                rows.extend((course.name, s.day_of_week, s.time_slots, s.location, s.weeks) for s in course.schedules)
+                category = self.planner.catalog.info(course)['category']
+                rows.extend((course.id, course.name, s.day_of_week, s.time_slots, s.location, s.weeks, category) for s in course.schedules)
         else:
             ids = state.get('selected_course_ids', [])
             path = self.activity.path.parent / 'planner' / PathName(state.get('db_path', 'courses.db'))
@@ -364,24 +395,50 @@ class DashboardMixin:
                 try:
                     db = sqlite3.connect(path.as_uri() + '?mode=ro', uri=True)
                     try:
-                        rows = db.execute('SELECT c.course_name,s.day_of_week,s.time_slots,s.location,s.weeks FROM courses c JOIN course_schedules s ON c.id=s.course_id WHERE c.id IN (' + ','.join('?' for _ in ids) + ')', ids).fetchall()
+                        fields = {r[1] for r in db.execute('PRAGMA table_info(courses)')}
+                        category = 'c.attribute' if 'attribute' in fields else "'未分类'"
+                        rows = db.execute('SELECT c.id,c.course_name,s.day_of_week,s.time_slots,s.location,s.weeks,' + category + ' FROM courses c JOIN course_schedules s ON c.id=s.course_id WHERE c.id IN (' + ','.join('?' for _ in ids) + ')', ids).fetchall()
                     finally: db.close()
                 except sqlite3.Error:
                     self.week_status.setText('规划课表暂时不可读取；请打开选课规划检查数据。')
         import sys
         vendor = str(ROOT / 'vendor/UCAS-Course-Selector/src')
         if vendor not in sys.path: sys.path.insert(0, vendor)
-        from coursesystem.conflict import is_in_week
-        days = [[] for _ in range(7)]
-        for name, day, slots, location, weeks in rows:
-            if 1 <= int(day) <= 7 and is_in_week(weeks, week):
-                days[int(day)-1].append(f'{name}\n第 {slots} 节 · {location}')
-        self.home_week.setRowCount(1)
-        for col, values in enumerate(days):
-            item = QTableWidgetItem('\n\n'.join(values) or '无规划课程')
-            item.setToolTip(item.text())
-            self.home_week.setItem(0, col, item)
-        self.home_week.resizeRowsToContents()
+        from coursesystem.conflict import is_in_week, parse_time_slots
+        from coursesystem.config import TIME_SLOTS
+        cells = {}
+        for identifier, name, day, slots, location, weeks, category in rows:
+            if not 1 <= int(day) <= 7 or not is_in_week(weeks, week): continue
+            for slot in parse_time_slots(slots):
+                if slot in TIME_SLOTS:
+                    cells.setdefault((slot-1, int(day)-1), {})[identifier] = (name, location, category or '未分类')
+        self.home_week.clearSpans()
+        self.home_week.clearContents()
+        self.home_week.setRowCount(len(TIME_SLOTS))
+        self.home_week.verticalHeader().setVisible(True)
+        self.home_week.setVerticalHeaderLabels([f'第 {slot} 节\n{time}' for slot, time in TIME_SLOTS.items()])
+        for row in range(len(TIME_SLOTS)): self.home_week.setRowHeight(row, 42)
+        for (row, col), entries in cells.items():
+            conflict = len(entries) > 1
+            text = '\n\n'.join(f'{name}\n{location}\n{category}' for name, location, category in entries.values())
+            if conflict: text = '时间冲突\n' + text
+            item = QTableWidgetItem(text)
+            item.setTextAlignment(Qt.AlignCenter)
+            item.setToolTip(text)
+            bg, fg = ('#f8d7da', '#721c24') if conflict else colors(next(iter(entries.values()))[2])
+            item.setBackground(QColor(bg))
+            item.setForeground(QColor(fg))
+            self.home_week.setItem(row, col, item)
+        # Match the planner's continuous-period blocks; keep every cell's text for copy.
+        for col in range(7):
+            row = 0
+            while row < len(TIME_SLOTS):
+                end = row + 1
+                entries = cells.get((row, col))
+                if entries:
+                    while end < len(TIME_SLOTS) and cells.get((end, col)) == entries: end += 1
+                    if end - row > 1: self.home_week.setSpan(row, col, end - row, 1)
+                row = end
 
     def refresh_today(self):
         from .iclass import IClass
