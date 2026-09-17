@@ -1,6 +1,7 @@
 """Atomic, account-scoped claims shared by scheduled and manual sign workers."""
 import hashlib
 import sqlite3
+from contextlib import contextmanager
 import time
 import math
 import secrets
@@ -15,8 +16,14 @@ class SignLedger:
             db.execute('CREATE TABLE IF NOT EXISTS signs(account TEXT, id TEXT, status TEXT, attempts INTEGER, retry_at REAL, PRIMARY KEY(account,id))')
             db.execute('CREATE TABLE IF NOT EXISTS schedules(account TEXT, id TEXT, start REAL, run_at REAL, PRIMARY KEY(account,id,start))')
 
+    @contextmanager
     def connect(self):
-        return sqlite3.connect(self.path, timeout=10)
+        db = sqlite3.connect(self.path, timeout=10)
+        try:
+            with db:
+                yield db
+        finally:
+            db.close()
 
     def planned_time(self, identifier, start, now=None):
         """One durable random time per account and class occurrence, shared by workers."""

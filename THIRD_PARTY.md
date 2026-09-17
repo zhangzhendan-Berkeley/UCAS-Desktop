@@ -4,7 +4,10 @@
 
 ## 社区贡献者
 
-- [@zihenghe04](https://github.com/zihenghe04)：[PR #1 — macOS 运行支持](https://github.com/zhangzhendan-Berkeley/UCAS-Desktop/pull/1)，提供钥匙串、浏览器、字体、进程、安装说明、手机页面与测试适配。原作者提交保留在 Git 历史中；后续集成修复不改变其贡献归属。
+- [cuizixian0328](https://github.com/zhangzhendan-Berkeley/UCAS-Desktop/commit/010c2ed9e703)（Git 提交署名）：钥匙串、浏览器、字体、进程、安装说明、手机页面、测试适配及模块缺失提示修正。
+- [@zihenghe04](https://github.com/zihenghe04)（PR 提交账号）：[PR #1 — macOS 运行支持](https://github.com/zhangzhendan-Berkeley/UCAS-Desktop/pull/1)。
+
+原作者提交保留在 Git 历史中；提交署名未关联到可验证的 GitHub 用户时链接到具体提交，不推测其身份。后续集成修复不改变贡献归属。
 
 ## 直接采用与适配
 

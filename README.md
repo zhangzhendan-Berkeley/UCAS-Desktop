@@ -26,7 +26,7 @@
 - Windows 继续提供免安装 ZIP；macOS 暂无 `.app` / `.dmg`，不要使用 Windows ZIP。
 - 手机面板支持手动指定自己的桌面 API 地址；地址变更时断开旧连接并清除旧密钥，需要重新连接。
 - 保留 v0.3.3 的课程调度、主页彩色课表、一键刷新和邮件提醒；增加 Windows / macOS 的自动回归检查。
-- 感谢 [@zihenghe04](https://github.com/zihenghe04) 在 [PR #1](https://github.com/zhangzhendan-Berkeley/UCAS-Desktop/pull/1) 提供 macOS 适配、手机页面改进及测试。
+- 感谢代码提交署名 [cuizixian0328](https://github.com/zhangzhendan-Berkeley/UCAS-Desktop/commit/010c2ed9e703) 和 PR 提交账号 [@zihenghe04](https://github.com/zihenghe04)，贡献见 [PR #1](https://github.com/zhangzhendan-Berkeley/UCAS-Desktop/pull/1)。
 
 ## v0.3.3：课程签到随机时间
 
@@ -385,7 +385,10 @@ node tests/lecture_portal_smoke.mjs
 
 ### 社区贡献
 
-感谢 [@zihenghe04](https://github.com/zihenghe04) 提交 [PR #1](https://github.com/zhangzhendan-Berkeley/UCAS-Desktop/pull/1)：macOS 账号存储、浏览器选择、字体、任务进程、安装说明及手机面板适配。本次集成保留原作者提交，并补充兼容性与安全修复。
+- **[cuizixian0328](https://github.com/zhangzhendan-Berkeley/UCAS-Desktop/commit/010c2ed9e703)**（Git 提交署名）：macOS 账号存储、浏览器选择、字体、任务进程、安装说明、手机面板及测试适配；另有缺少讲座模块时的错误提示修正。相关改动已适配到当前版本。
+- **[@zihenghe04](https://github.com/zihenghe04)**（PR 提交账号）：通过 [PR #1](https://github.com/zhangzhendan-Berkeley/UCAS-Desktop/pull/1) 提交整合后的 macOS 支持。
+
+上述署名和 PR 账号按 Git / GitHub 实际记录分别列出；本次集成保留原始作者提交，并补充兼容性与安全修复。
 
 
 感谢原作者公开代码与文档，本项目是在这些工作之上的集成与适配：

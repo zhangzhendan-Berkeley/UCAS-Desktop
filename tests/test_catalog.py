@@ -1,4 +1,5 @@
 import sqlite3
+from contextlib import closing
 import tempfile
 import unittest
 from pathlib import Path
@@ -13,7 +14,7 @@ class CatalogTests(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         path = Path(tmp.name) / 'courses.db'
-        with sqlite3.connect(path) as conn:
+        with closing(sqlite3.connect(path)) as conn, conn:
             conn.execute('CREATE TABLE courses (id INTEGER, department TEXT, teacher TEXT, attribute TEXT)' if optional else 'CREATE TABLE courses (id INTEGER)')
             for c in rows:
                 if optional:

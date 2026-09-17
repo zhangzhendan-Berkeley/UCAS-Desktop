@@ -1,6 +1,6 @@
 # macOS 安装与运行
 
-v0.4.0 新增 macOS 源码运行支持，感谢 [@zihenghe04 的 PR #1](https://github.com/zhangzhendan-Berkeley/UCAS-Desktop/pull/1)。目前不提供签名的 `.app` / `.dmg`；Windows 便携 ZIP 不能用于 Mac。
+v0.4.0 新增 macOS 源码运行支持，感谢提交署名 cuizixian0328 与 [@zihenghe04 的 PR #1](https://github.com/zhangzhendan-Berkeley/UCAS-Desktop/pull/1)。目前不提供签名的 `.app` / `.dmg`；Windows 便携 ZIP 不能用于 Mac。
 
 ## 环境
 

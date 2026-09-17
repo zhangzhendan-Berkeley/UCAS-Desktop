@@ -10,6 +10,7 @@ import re
 import secrets
 import shutil
 import sqlite3
+from contextlib import contextmanager
 import subprocess
 import sys
 from datetime import datetime
@@ -185,8 +186,14 @@ class Store:
             db.execute('CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY, module TEXT, title TEXT, status TEXT, created TEXT, updated TEXT, log TEXT)')
             db.execute("UPDATE jobs SET status='interrupted' WHERE status IN ('running','stopping')")
 
+    @contextmanager
     def connect(self):
-        return sqlite3.connect(self.path, timeout=10)
+        db = sqlite3.connect(self.path, timeout=10)
+        try:
+            with db:
+                yield db
+        finally:
+            db.close()
 
     def create(self, module, title):
         job_id = secrets.token_hex(6)
