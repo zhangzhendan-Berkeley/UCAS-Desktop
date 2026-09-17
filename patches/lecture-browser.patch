@@ -1,7 +1,7 @@
 diff --git a/src/workflow.ts b/src/workflow.ts
 --- a/src/workflow.ts
 +++ b/src/workflow.ts
-@@ -66,6 +66,7 @@ async function runAutomationCycle(
+@@ -67,6 +67,7 @@ async function runAutomationCycle(
  ): Promise<RunSummary> {
    const browser = await chromium.launch({
      headless: config.headless,
