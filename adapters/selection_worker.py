@@ -73,6 +73,8 @@ def run(config):
                         success = run_course_selection(driver, code, poll_interval=1)
                     output = capture.getvalue()
                     if success:
+                        print(json.dumps({'event': 'selection.success', 'id': code, 'title': code,
+                            'semester': config.get('course_semesters', {}).get(code, '')}, ensure_ascii=False), flush=True)
                         pending.remove(code)
                     elif '已满' not in output:
                         print(f'{code}：非满员失败或结果未知，不再重试。', flush=True)

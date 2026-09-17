@@ -43,7 +43,8 @@ class LocalAPI:
                     self.send((ROOT / 'mobile/manifest.webmanifest').read_bytes(), content_type='application/manifest+json')
                     return
                 if path == '/v1/health':
-                    self.send({'app': 'UCAS Desktop', 'version': '0.1.0', 'api_version': 1})
+                    from . import __version__
+                    self.send({'app': 'UCAS Desktop', 'version': __version__, 'api_version': 1})
                     return
                 supplied = self.headers.get('Authorization', '')
                 if not hmac.compare_digest(supplied, 'Bearer ' + owner.token):

@@ -3,7 +3,7 @@
 <main><small>UCAS DESKTOP / 雁栖湖</small><h1>任务状态，随时查看</h1><p>电脑保持运行时，此处显示桌面助手的任务记录。</p><input id="token" type="password" placeholder="输入桌面助手显示的访问密钥"><button id="connect">连接并刷新</button><div id="status">尚未连接</div><section id="jobs"></section><footer>iPhone：Safari → 分享 → 添加到主屏幕。<br>此面板只能查看状态，自动任务仍在 Windows 电脑运行。</footer></main>
 <script>
 const box=document.getElementById('token');box.value=location.hash.slice(1)||sessionStorage.getItem('ucasToken')||'';history.replaceState(null,'',location.pathname);
-const labels={running:'运行中',completed:'已结束',failed:'有失败/未完成项',stopped:'已停止',interrupted:'已中断',stopping:'停止中'};
+const labels={running:'运行中',completed:'已结束',attention:'待处理：仍有未完成项',failed:'执行失败',stopped:'已停止',interrupted:'已中断',stopping:'停止中'};
 async function refresh(){const status=document.getElementById('status');try{const r=await fetch('/v1/jobs',{headers:{Authorization:'Bearer '+box.value}});if(!r.ok)throw Error(r.status===401?'密钥不正确':'连接失败');const items=await r.json();sessionStorage.setItem('ucasToken',box.value);document.getElementById('jobs').replaceChildren(...items.map(item=>{const a=document.createElement('article'),pill=document.createElement('span'),title=document.createElement('strong'),p=document.createElement('p');pill.className='pill';pill.textContent=labels[item.status]||item.status;title.textContent=item.title;p.textContent=item.updated;a.append(pill,title,p);return a}));status.textContent=items.length?'已更新 '+new Date().toLocaleTimeString():'暂无任务';}catch(e){status.textContent=e.message;}}
 document.getElementById('connect').onclick=refresh;if(box.value)refresh();setInterval(()=>{if(box.value)refresh()},15000);
 </script></html>

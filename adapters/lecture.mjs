@@ -8,6 +8,9 @@ import { Logger } from '../vendor/ucas-humanity-lecture-bot/dist/src/log.js';
 import { runAutomation } from '../vendor/ucas-humanity-lecture-bot/dist/src/workflow.js';
 import { queryScienceSchedule } from './lecture_schedule.mjs';
 import { observeAndBook } from './lecture_observe.mjs';
+import { queryAttendance } from './lecture_records.mjs';
+import { queryLectureCalendars } from './lecture_calendar.mjs';
+import { summarizeDecisionReasonWithRules } from '../vendor/ucas-humanity-lecture-bot/dist/src/filter.js';
 
 try {
   let input = '';
@@ -30,7 +33,11 @@ try {
   }));
   const config = loadConfig(['--config', configPath]);
   const logger = new Logger('info');
-  if (p.observe) {
+  if (p.action === 'calendars') {
+    await queryLectureCalendars(config, logger);
+  } else if (p.action === 'attendance') {
+    await queryAttendance(config, logger);
+  } else if (p.observe) {
     await observeAndBook(config, logger, dir, p, runAutomation);
   } else if (p.action === 'science-schedule') {
     await queryScienceSchedule(config, logger);
@@ -42,6 +49,7 @@ try {
     const summary = await runAutomation(config, logger);
     for (const lecture of summary.candidates) console.log(`候选：${lecture.title} | ${lecture.startTimeText} | ${lecture.location || ''}`);
     console.log(JSON.stringify({候选数量: summary.candidates.length, 报名结果: summary.attempts, 停止原因: summary.stopReason, 配额: summary.quota}));
+    for (const item of summary.skipped) console.log(JSON.stringify({event:'lecture.decision', title:item.lecture.title, time:item.lecture.startTimeText, reason:item.reason, detail:summarizeDecisionReasonWithRules(item,config.timeWindows)}));
     if (summary.attempts.some(x => x.outcome === 'unknown')) throw new Error('存在报名结果不明确的讲座，停止巡检，请在学校页面核对。');
     if (summary.quota.bookedCount !== null && summary.quota.requiredCount !== null && summary.quota.bookedCount >= summary.quota.requiredCount) break;
     if (n + 1 < rounds) {

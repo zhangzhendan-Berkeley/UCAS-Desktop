@@ -18,8 +18,11 @@ from .iclass import IClass, course_id, match_lecture_course
 from .api import LocalAPI
 from .automation import Automation
 from .enrollment import Enrollment, account_hash
+from .activity import Activity, NOTICE_TYPES, NOTICE_DEFAULTS
+from .dashboard import DashboardMixin
+from .presentation import color_item, LogHighlighter, enable_copy
 
-STATUS = {'running': '运行中', 'stopping': '停止中', 'completed': '已结束', 'failed': '失败 / 有未完成项', 'stopped': '已停止', 'interrupted': '已中断'}
+STATUS = {'running': '运行中', 'stopping': '停止中', 'completed': '已结束', 'attention': '待处理：仍有未完成项', 'failed': '执行失败', 'stopped': '已停止', 'interrupted': '已中断'}
 
 
 def load_fonts():
@@ -52,6 +55,8 @@ class Work(QRunnable):
 
 def label(text, name=None):
     widget = QLabel(text)
+    widget.setTextFormat(Qt.PlainText)
+    widget.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard)
     widget.setWordWrap(True)
     if name:
         widget.setObjectName(name)
@@ -85,7 +90,7 @@ def table(headers):
     return widget
 
 
-class Window(QMainWindow):
+class Window(DashboardMixin, QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle('UCAS 桌面助手 · 雁栖湖')
@@ -108,6 +113,8 @@ class Window(QMainWindow):
         self.account_jobs = {}
         self.enrollment = Enrollment(DATA / 'planner', self.vault.get)
         self.settings = read_json(DATA / 'settings.json', {})
+        self.activity = Activity(DATA / 'activity.sqlite3')
+        self.activity.recover_mail()
         self.api = None
         self.planner = None
         self.current_log = None
@@ -127,7 +134,7 @@ class Window(QMainWindow):
         self.nav.setObjectName('navigation')
         self.nav.addItems(['概览', '课程与讲座签到', '人文讲座预约', '国科大在线', '选课规划', '自动选课', '任务与日志', '设置与更新', '个人信息'])
         side.addWidget(self.nav)
-        self.runtime_hint = label('本地运行 · v0.1.0\n关闭窗口后托盘运行\n右键托盘可退出程序', 'sideText')
+        self.runtime_hint = label('本地运行 · v0.3.0\n关闭窗口后托盘运行\n右键托盘可退出程序', 'sideText')
         side.addWidget(self.runtime_hint)
         horizontal.addWidget(sidebar)
         self.pages = QStackedWidget()
@@ -142,10 +149,12 @@ class Window(QMainWindow):
         self.build_jobs()
         self.build_settings()
         self.build_profile()
+        enable_copy(self)
         self.nav.currentRowChanged.connect(self.navigate)
         self.nav.setCurrentRow(0)
         self.jobs.changed.connect(self.refresh_jobs)
         self.jobs.output.connect(self.receive_output)
+        self.jobs.ended.connect(self.task_notification)
         self.refresh_jobs()
         self.statusBar().showMessage('就绪。自动任务需要你在相应模块配置后启动。')
         self.clock = QTimer(self)
@@ -266,8 +275,8 @@ class Window(QMainWindow):
         password.setPlaceholderText('密码只在本机使用')
         remember = QCheckBox('记住账号密码（使用当前 Windows 账户加密）')
         remember.setChecked(True)
-        form.addRow('账号', user)
-        form.addRow('密码', password)
+        form.addRow('发件邮箱' if key == 'email' else '账号', user)
+        form.addRow('授权码 / 专用密码' if key == 'email' else '密码', password)
         remember.setVisible(False)  # Compatibility with existing account callers; storage is always encrypted.
         form.addRow(label('编辑完成后自动加密保存，所有模块共用；也可点击下方保存。', 'muted'))
         self.account_fields[key] = (user, password, remember)
@@ -287,8 +296,38 @@ class Window(QMainWindow):
 
     def build_profile(self):
         layout = self.page('个人信息', '账号由当前 Windows 用户加密保存在本机；课程、讲座、已选同步与自动选课共用。')
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        widget = QWidget()
+        layout.addWidget(scroll, 1)
+        layout = QVBoxLayout(widget)
+        scroll.setWidget(widget)
         layout.addWidget(self.account_form('sep', 'SEP 信息门户账号', 'SEP 邮箱 / 账号'))
         layout.addWidget(self.account_form('iclass', '轻新课堂账号', '学号'))
+        layout.addWidget(self.account_form('email', '发件端 · QQ / Foxmail / 国科大邮箱', '发件邮箱，例如自己的 QQ 邮箱'))
+        self.mail_recipient = QLineEdit(self.settings.get('mail_recipient', self.vault.get('email').get('username', '')))
+        self.mail_recipient.setPlaceholderText('收件邮箱，可以是国科大邮箱；无需填写收件邮箱密码')
+        layout.addLayout(row(label('收件邮箱'), self.mail_recipient))
+        self.email_enabled = QCheckBox('启用邮件提醒（总开关）')
+        self.email_enabled.setChecked(self.settings.get('mail_enabled', self.settings.get('booking_email', False)))
+        self.notice_checks = {}
+        choices = QGridLayout()
+        for index, (kind, title) in enumerate(NOTICE_TYPES.items()):
+            check = QCheckBox(title)
+            check.setChecked(self.settings.get('mail_events', {}).get(kind, NOTICE_DEFAULTS[kind]))
+            self.notice_checks[kind] = check
+            choices.addWidget(check, index // 2, index % 2)
+        self.achievements_enabled = QCheckBox('达成累计目标时显示成就提示（不打断任务）')
+        self.achievements_enabled.setChecked(self.settings.get('achievement_popups', True))
+        layout.addWidget(self.email_enabled)
+        layout.addLayout(choices)
+        layout.addWidget(self.achievements_enabled)
+        self.email_enabled.toggled.connect(self.save_notification_settings)
+        self.mail_recipient.editingFinished.connect(self.save_notification_settings)
+        for check in self.notice_checks.values(): check.toggled.connect(self.save_notification_settings)
+        self.achievements_enabled.toggled.connect(self.save_notification_settings)
+        layout.addLayout(row(button('发送测试邮件到收件邮箱', lambda: self.test_email(True)), button('核对收件箱后重发未确认通知', self.retry_notification)))
+        layout.addWidget(label('按发件邮箱自动选择服务器：QQ / Foxmail 使用 smtp.qq.com:465，国科大使用 mail.cstnet.cn:465，均验证 SSL 证书。QQ 填 SMTP 授权码，国科大填客户端专用密码。检测账号不发邮件；邮件失败不影响学校操作。', 'muted'))
         layout.addWidget(label('账号修改对之后启动的任务生效。检测只登录，不报名、不选课、不签到；SEP 检测会打开独立浏览器，验证码或邮箱验证需要你完成。', 'muted'))
         layout.addStretch()
 
@@ -326,6 +365,9 @@ class Window(QMainWindow):
             self.error(message)
 
     def test_account(self, key):
+        if key == 'email':
+            self.test_email()
+            return
         try:
             account = self.account(key)
             version = self.account_version(key)
@@ -341,30 +383,6 @@ class Window(QMainWindow):
         except Exception as exc:
             self.profile_status[key].setText('检测未完成：' + redact(str(exc), self.vault.secret_values()))
             self.error(str(exc))
-
-    def build_home(self):
-        layout = self.page('把校园事务放在一起', '已按雁栖湖校区配置。选课规划可直接使用，学校账号相关功能需首次登录验证。')
-        self.home_status = label('正在加载模块…', 'banner')
-        layout.addWidget(self.home_status)
-        grid = QGridLayout()
-        cards = [
-            ('课程与讲座签到', '查询当天课表，选择课程定时签到。讲座可使用同协议二维码或排课 ID。', 1),
-            ('人文讲座预约', '按可参加的星期和时段筛选，支持预览、报名及定时巡检。', 2),
-            ('国科大在线', '自动处理已适配的英语慕课视频、文档。测验与考试需另行完成。', 3),
-            ('选课规划', '内置 2026 秋季课表；按雁栖湖筛选，检查周次冲突并导出计划。', 4),
-            ('自动选课', '手动登录 SEP 后批量提交目标课程，支持定时启动与余量轮询。', 5),
-            ('任务与日志', '查看每项任务的实际结果，停止自动任务，保留运行记录。', 6),
-        ]
-        for index, (title, description, page) in enumerate(cards):
-            card = QGroupBox(title)
-            content = QVBoxLayout(card)
-            content.addWidget(label(description, 'muted'))
-            content.addWidget(button('打开模块 →', lambda checked=False, p=page: self.nav.setCurrentRow(p)))
-            grid.addWidget(card, index // 2, index % 2)
-        layout.addLayout(grid)
-        layout.addWidget(label('验证边界：程序可运行 ≠ 学校已确认操作成功。查看任务日志中的返回结果，并在学校系统核对记录。', 'muted'))
-        layout.addLayout(row(button('打开使用说明', lambda: self.open_path(ROOT / '使用指南.md')), button('查看来源与验证记录', lambda: self.open_path(ROOT / 'docs/项目筛选与验证.md'))))
-        layout.addStretch()
 
     def build_iclass(self):
         layout = self.page('课程与讲座签到', '轻新课堂。可手动选择排课，或每天 08:00 自动安排当天全部未结束课程；电脑需联网且不休眠。')
@@ -522,7 +540,9 @@ class Window(QMainWindow):
             self.course_table.setItem(index, 0, check)
             fields = [c['courseName'], c['teacherName'], c['classBeginTime'], c['classEndTime'], '已签到' if c['signStatus'] == '1' else '未签到', c['id']]
             for column, text in enumerate(fields, 1):
-                self.course_table.setItem(index, column, QTableWidgetItem(text))
+                cell = QTableWidgetItem(str(text))
+                color_item(cell, 'success' if str(c['signStatus']) == '1' else 'pending')
+                self.course_table.setItem(index, column, cell)
         self.statusBar().showMessage(f'查询到 {len(courses)} 节课程 / 排课。')
 
     def start_job(self, module, title, program, args, payload):
@@ -606,6 +626,9 @@ class Window(QMainWindow):
         form.addLayout(days)
         self.lecture_from = QTimeEdit(QTime(18, 0))
         self.lecture_to = QTimeEdit(QTime(22, 0))
+        self.lecture_all_day = QCheckBox('全天（不限制讲座开始时间，仍按所选星期和雁栖湖筛选）')
+        form.addWidget(self.lecture_all_day)
+        self.lecture_all_day.toggled.connect(self.set_lecture_all_day)
         self.lecture_interval = QSpinBox()
         self.lecture_interval.setRange(5, 180)
         self.lecture_interval.setValue(30)
@@ -627,9 +650,12 @@ class Window(QMainWindow):
         self.lecture_hours = QLineEdit(','.join(map(str, clock.get('hours', range(24)))))
         self.lecture_hours.setPlaceholderText('0–23 的小时，用英文逗号分隔')
         for index, check in enumerate(self.days):
-            check.setChecked((index + 1) % 7 in clock.get('days', [1, 2, 3, 4, 5]))
-        self.lecture_from.setTime(QTime.fromString(clock.get('from', '18:00'), 'HH:mm'))
-        self.lecture_to.setTime(QTime.fromString(clock.get('to', '22:00'), 'HH:mm'))
+            check.setChecked((index + 1) % 7 in clock.get('days', [0, 1, 2, 3, 4, 5, 6]))
+        self.lecture_from.setTime(QTime.fromString(clock.get('from', '00:00'), 'HH:mm'))
+        self.lecture_to.setTime(QTime.fromString(clock.get('to', '23:59'), 'HH:mm'))
+        self.lecture_all_day.setChecked(clock.get('from', '00:00') == '00:00' and clock.get('to', '23:59') == '23:59')
+        self.lecture_filter_hint = label('筛选依据是讲座开始时间，不是报名发布时间；例如 18:00–22:00 会排除 15:30 开始的讲座。', 'muted')
+        layout.addWidget(self.lecture_filter_hint)
         layout.addWidget(self.lecture_clock)
         layout.addWidget(self.lecture_book)
         layout.addLayout(row(label('检查小时'), self.lecture_hours))
@@ -642,6 +668,13 @@ class Window(QMainWindow):
         layout.addWidget(label('全天默认每天 48 次。后台检查不弹浏览器；需邮箱验证时先用“只检查候选讲座”登录。首次已有讲座作为基线；一周后可参考报告缩小检查小时。保存后随应用重启自动恢复。', 'muted'))
         layout.addWidget(label('预约成功不等于已签到。签到在“课程与讲座签到”中单独建立任务。', 'banner'))
         layout.addStretch()
+
+    def set_lecture_all_day(self, enabled):
+        self.lecture_from.setEnabled(not enabled)
+        self.lecture_to.setEnabled(not enabled)
+        if enabled:
+            self.lecture_from.setTime(QTime(0, 0))
+            self.lecture_to.setTime(QTime(23, 59))
 
     def save_lecture_plan(self):
         try:
@@ -796,6 +829,7 @@ class Window(QMainWindow):
             header.setSectionResizeMode(0, QHeaderView.Fixed)
             self.planner.week_view.table.setColumnWidth(0, 105)
             self.planner_layout.addWidget(self.planner, 1)
+            enable_copy(self.planner)
             count = len(self.planner.db.get_all_courses())
             self.planner_status.setText(f'已载入 {count} 门课程。请在校区筛选中选择“雁栖湖”；以学校最新课表为准。')
             snapshot = self.enrollment.current()
@@ -946,6 +980,9 @@ class Window(QMainWindow):
             start_at = self.select_time.dateTime().toString('yyyy-MM-ddTHH:mm:ss') if self.select_timed.isChecked() else None
             payload = self.account('sep') | {'codes': codes, 'preview': preview, 'start_at': start_at,
                        'interval': self.select_interval.value(), 'rounds': self.select_rounds.value() if self.select_repeat.isChecked() and not preview else 1}
+            if self.planner:
+                payload['course_semesters'] = {code: '|'.join(sorted({s.semester for s in course.schedules}))
+                    for code in codes if (course := self.planner.catalog.resolve(code))}
             self.start_job('selection', f'选课{"预览" if preview else "任务"} · {len(codes)} 门', PYTHON, [ROOT / 'adapters/selection_worker.py'], payload)
         except Exception as exc:
             self.error(str(exc))
@@ -961,6 +998,7 @@ class Window(QMainWindow):
         self.log_view = QPlainTextEdit()
         self.log_view.setReadOnly(True)
         self.log_view.setMaximumBlockCount(3000)
+        self.log_highlighter = LogHighlighter(self.log_view.document())
         split.addWidget(self.log_view)
         split.setSizes([270, 400])
         layout.addWidget(split, 1)
@@ -982,11 +1020,13 @@ class Window(QMainWindow):
             for column, value in enumerate(values):
                 cell = QTableWidgetItem(value)
                 cell.setData(Qt.UserRole, item['id'])
+                color_item(cell, {'completed': 'success', 'failed': 'failed', 'attention': 'pending', 'running': 'running', 'stopping': 'pending'}.get(item['status'], 'stopped'))
                 self.job_table.setItem(index, column, cell)
             if item['id'] == selected:
                 self.job_table.selectRow(index)
         self.job_table.blockSignals(False)
         self.home_status.setText(f'5 个功能模块已接入   ·   {len(self.jobs.active)} 项任务运行中   ·   {len(items)} 条任务记录')
+        self.refresh_dashboard()
 
     def select_job(self, job_id):
         self.refresh_jobs()
@@ -1010,6 +1050,7 @@ class Window(QMainWindow):
                 continue
             try:
                 message = json.loads(line)
+                self.activity_event(job_id, message)
                 meta = self.account_jobs.get(job_id)
                 if meta and message.get('event') == 'account.check':
                     self.checked_account('sep', meta['version'], message.get('status') == 'valid', message.get('message', '检测未完成'))

@@ -9,10 +9,13 @@ from ucasdesk.iclass import IClass, eligible, parse_time, course_id
 from ucasdesk.sign_ledger import SignLedger
 
 
-def daily_courses(client, date, now=None):
+def daily_courses(client, date, now=None, all_courses=None):
     now = now or datetime.now()
     result = {}
-    for course in client.query(date):
+    rows = client.query(date)
+    if all_courses is not None:
+        all_courses[:] = rows
+    for course in rows:
         course_id(course['id'])
         start, end = parse_time(course['classBeginTime']), parse_time(course['classEndTime'])
         if start.strftime('%Y%m%d') != date or end <= start:
@@ -37,6 +40,8 @@ def main(payload):
             raise
         ledger.finish(identifier, 'success' if result['success'] else 'retry' if result.get('retryable') else 'unknown', time.time() + 120)
         print(json.dumps(result, ensure_ascii=False), flush=True)
+        if result['success']:
+            print(json.dumps({'event': 'iclass.sign-success', 'id': identifier, 'title': '手动排课签到', 'automatic': False}, ensure_ascii=False), flush=True)
         return 0 if result['success'] else 1
     if payload['mode'] == 'daily':
         date = payload['date']
@@ -44,7 +49,8 @@ def main(payload):
             if datetime.now().strftime('%Y%m%d') != date:
                 raise ValueError('已跨日，停止昨日课表检查；等待新的每日计划。')
             try:
-                courses = daily_courses(client, date)
+                today = []
+                courses = daily_courses(client, date, all_courses=today)
                 break
             except Exception as exc:
                 print(f'每日课表检查 {attempt + 1}/3 失败：{exc}', flush=True)
@@ -52,6 +58,7 @@ def main(payload):
                     raise
                 print('5 分钟后重试只读查询。', flush=True)
                 time.sleep(300)
+        print(json.dumps({'event': 'iclass.today', 'date': date, 'courses': today}, ensure_ascii=False), flush=True)
         print(json.dumps({'event': 'iclass.daily-plan', 'date': date, 'courses': courses}, ensure_ascii=False), flush=True)
         if not courses:
             print('今天没有尚未结束且未签到的课程，不需要建立任务。', flush=True)
@@ -110,6 +117,7 @@ def main(payload):
                 ledger.finish(key, 'success' if result['success'] else 'retry' if result.get('retryable') else 'unknown', retry_at)
                 print(course['courseName'] + '：' + json.dumps(result, ensure_ascii=False), flush=True)
                 if result['success']:
+                    print(json.dumps({'event': 'iclass.sign-success', 'id': str(key), 'title': course['courseName'], 'automatic': True}, ensure_ascii=False), flush=True)
                     del pending[key]
                     continue
                 if not result.get('retryable'):

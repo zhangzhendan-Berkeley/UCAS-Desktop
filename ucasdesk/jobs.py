@@ -4,11 +4,13 @@ import json
 import subprocess
 from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, Signal
 from .core import ROOT, LOGS, child_env, redact
+from .enrollment import account_hash
 
 
 class Jobs(QObject):
     changed = Signal()
     output = Signal(str, str)
+    ended = Signal(str, object)
 
     def __init__(self, store, vault):
         super().__init__()
@@ -37,7 +39,9 @@ class Jobs(QObject):
         if payload:
             values.extend(str(payload.get(k, '')) for k in ('username', 'password'))
         decoder = codecs.getincrementaldecoder('utf-8')('replace')
-        self.active[job_id] = {'process': proc, 'module': module, 'stopping': False, 'decoder': decoder, 'secrets': values, 'buffer': '', 'course_ids': ids}
+        self.active[job_id] = {'process': proc, 'module': module, 'stopping': False, 'decoder': decoder, 'secrets': values, 'buffer': '', 'course_ids': ids,
+            'account': account_hash(payload['username']) if payload and payload.get('username') else '',
+            'preview': bool((payload or {}).get('preview')), 'semester': (payload or {}).get('semester', ''), 'title': title}
         proc.readyReadStandardOutput.connect(lambda: self.drain(job_id))
         proc.finished.connect(lambda code, status: self.finished(job_id, code))
         proc.errorOccurred.connect(lambda error: self.failed(job_id, error))
@@ -73,7 +77,9 @@ class Jobs(QObject):
         if error == QProcess.FailedToStart and job_id in self.active:
             self.log(job_id, '进程启动失败，请检查运行环境。\n')
             self.store.status(job_id, 'failed')
-            self.active.pop(job_id)['process'].deleteLater()
+            item = self.active.pop(job_id)
+            self.ended.emit(job_id, {key: item.get(key) for key in ('module', 'account', 'preview', 'title')} | {'status': 'failed', 'code': None})
+            item['process'].deleteLater()
             self.changed.emit()
 
     def finished(self, job_id, code):
@@ -81,8 +87,9 @@ class Jobs(QObject):
             return
         self.drain(job_id, final=True)
         item = self.active.pop(job_id)
-        status = 'stopped' if item['stopping'] else ('completed' if code == 0 else 'failed')
+        status = 'stopped' if item['stopping'] else ('completed' if code == 0 else 'attention' if item['module'] == 'mooc' and code == 2 else 'failed')
         self.store.status(job_id, status)
+        self.ended.emit(job_id, {key: item.get(key) for key in ('module', 'account', 'preview', 'title')} | {'status': status, 'code': code})
         self.log(job_id, f'\n任务结束：{status}（退出码 {code}）。请查看上方各项实际结果。\n')
         item['process'].deleteLater()
         self.changed.emit()

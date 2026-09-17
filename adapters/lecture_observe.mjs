@@ -2,9 +2,9 @@ import { chromium } from '../vendor/ucas-humanity-lecture-bot/node_modules/playw
 import { existsSync } from 'node:fs';
 import { ensureAuthenticated } from '../vendor/ucas-humanity-lecture-bot/dist/src/login.js';
 import { extractLectureSnapshot } from '../vendor/ucas-humanity-lecture-bot/dist/src/lecture-page.js';
-import { decideLectures, isQuotaReached } from '../vendor/ucas-humanity-lecture-bot/dist/src/filter.js';
 import { loadHistory, saveHistory, observe } from './lecture_history.mjs';
 import { isYanqiLocation } from '../vendor/ucas-humanity-lecture-bot/dist/src/campus.js';
+import { logDecisions } from './lecture_diagnostics.mjs';
 
 export async function observeAndBook(config, logger, dir, payload, runAutomation) {
   let history = loadHistory(dir);
@@ -17,6 +17,8 @@ export async function observeAndBook(config, logger, dir, payload, runAutomation
     const page = await context.newPage();
     await ensureAuthenticated(page, { ...config, headless: true }, logger);
     snapshot = await extractLectureSnapshot(page);
+    console.log(JSON.stringify({event:'lecture.calendar', kind:'humanity', scope:'current-page',
+      rows:snapshot.lectures.map(row=>({title:row.title,time:row.startTimeText,location:row.location}))}));
     const observed = observe(history, snapshot.lectures.map(row => ({ ...row, yanqi: isYanqiLocation(row.location) })), new Date(), payload.slot);
     history = observed.state;
     saveHistory(dir, history);
@@ -33,13 +35,13 @@ export async function observeAndBook(config, logger, dir, payload, runAutomation
   } finally {
     if (browser) await browser.close();
   }
+  const decisions = logDecisions(snapshot, config);
   if (payload.preview || !payload.book) return;
   if (history.bookingPending) {
     console.log('此前自动报名结果未确认，保持只读观察。请核对学校记录后，在应用中解除报名暂停。');
     return;
   }
-  const eligible = decideLectures(snapshot.lectures.filter(row => isYanqiLocation(row.location)), { terminalLectures: {} }, new Set(),
-    isQuotaReached(snapshot.quota), config.timeWindows).some(d => d.action === 'candidate');
+  const eligible = decisions.some(d => d.eligible);
   if (!eligible) {
     console.log('本轮没有符合所选星期、时间及页面配额条件的可报名讲座。');
     return;

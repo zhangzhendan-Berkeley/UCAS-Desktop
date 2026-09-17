@@ -22,5 +22,8 @@ jobs:
           node --check adapters/lecture.mjs
           node --check adapters/lecture_schedule.mjs
           node --check adapters/lecture_observe.mjs
+          node --check adapters/lecture_diagnostics.mjs
+          node --check adapters/lecture_records.mjs
+          node --check adapters/lecture_calendar.mjs
           node --test tests/lecture_history.test.mjs
           node --check adapters/mooc.mjs
