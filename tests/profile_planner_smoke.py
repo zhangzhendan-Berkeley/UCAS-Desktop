@@ -11,13 +11,13 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from PySide6.QtCore import Qt, QEventLoop, QTimer
 from PySide6.QtWidgets import QApplication, QDialog, QTextBrowser, QMessageBox
-from ucasdesk.ui import Window, STYLE, load_fonts
+from ucasdesk.ui import Window, load_fonts, style_sheet
 from ucasdesk.automation import Automation
 from ucasdesk.core import ROOT, Vault, Store
 
 app = QApplication([])
 load_fonts()
-app.setStyleSheet(STYLE)
+app.setStyleSheet(style_sheet())
 
 with tempfile.TemporaryDirectory() as tmp:
     directory = Path(tmp)
@@ -47,7 +47,11 @@ with tempfile.TemporaryDirectory() as tmp:
                 password.setText('fixture-password')
                 password.editingFinished.emit()
                 assert Vault().get(key)['password'] == 'fixture-password'
-                assert b'fixture-password' not in (directory / 'accounts.dpapi').read_bytes()
+                if os.name == 'nt':
+                    assert b'fixture-password' not in (directory / 'accounts.dpapi').read_bytes()
+                else:
+                    leaked = [p.name for p in directory.rglob('*') if p.is_file() and b'fixture-password' in p.read_bytes()]
+                    assert not leaked, '密码以明文落盘：' + ', '.join(leaked)
             window.account_fields['sep'][1].setText('updated-password')
             window.save_profile('sep')
             assert Vault().get('sep')['password'] == 'updated-password'

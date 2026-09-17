@@ -52,7 +52,12 @@ Vercel 页面：<https://ucas-desktop-mobile.vercel.app>
 | 钥匙串保存/读取/忘记账号 | 通过 |
 | 任务子进程、日志脱敏、中途停止 | 通过 |
 | Selenium 驱动本机 Chrome（无头） | 通过 |
-| 单元测试 `unittest discover -s tests` | 37 项通过（2 项 Windows DPAPI 测试跳过） |
+| SEP 登录流程离线回归（登录、密码错误拒绝、已选表解析） | 通过 |
+| 单元测试 `unittest discover -s tests` | 41 项通过（2 项 Windows DPAPI 测试跳过） |
+| 界面冒烟（ui_smoke / automation_ui_smoke / profile_planner_smoke） | 通过 |
+| Node 测试（手机面板、浏览器通道、讲座历史） | 8 项通过 |
+
+浏览器选择：装了 Edge 就用 Edge，否则用 Google Chrome，两者都没有时由 Playwright 使用自带 Chromium。Windows 专用的 `creationflags`（隐藏控制台）只在 Windows 上设置，macOS 设置它会被 Python 拒绝。
 
 `unittest discover` 中的字体检查需要图形版 Qt 应用，单独运行可执行：
 

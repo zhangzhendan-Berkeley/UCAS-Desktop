@@ -2,9 +2,10 @@ import { chromium } from '../vendor/ucas-humanity-lecture-bot/node_modules/playw
 import { existsSync } from 'node:fs';
 import { ensureAuthenticated } from '../vendor/ucas-humanity-lecture-bot/dist/src/login.js';
 import { readScienceSchedule } from '../vendor/ucas-humanity-lecture-bot/dist/src/portal.js';
+import { browserChannel } from './browser_channel.mjs';
 
 export async function queryScienceSchedule(config, logger) {
-  const browser = await chromium.launch({ channel: 'msedge', headless: false });
+  const browser = await chromium.launch({ channel: browserChannel(), headless: false });
   try {
     const state = process.env.UCAS_STORAGE_STATE;
     const context = await browser.newContext({ storageState: state && existsSync(state) ? state : undefined });

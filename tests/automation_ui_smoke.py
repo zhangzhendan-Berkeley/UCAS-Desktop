@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from PySide6.QtWidgets import QApplication
-from ucasdesk.ui import Window, STYLE, load_fonts
+from ucasdesk.ui import Window, load_fonts, style_sheet
 from ucasdesk.automation import Automation
 from ucasdesk.core import Store, ROOT
 
@@ -22,7 +22,7 @@ class FakeVault:
 
 app = QApplication([])
 load_fonts()
-app.setStyleSheet(STYLE)
+app.setStyleSheet(style_sheet())
 with tempfile.TemporaryDirectory() as tmp:
     directory = Path(tmp)
     def engine(jobs, vault, parent):

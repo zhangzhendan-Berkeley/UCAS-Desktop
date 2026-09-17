@@ -231,6 +231,43 @@ def browser_path():
     raise RuntimeError('未找到 Edge 或 Chrome，请安装其中一种浏览器。')
 
 
+def browser_kind():
+    """'edge' when Microsoft Edge is installed, otherwise 'chrome'."""
+    return 'edge' if 'edge' in browser_path().name.lower() else 'chrome'
+
+
+def browser_label():
+    """Display name of the browser this machine will drive."""
+    return 'Microsoft Edge' if browser_kind() == 'edge' else 'Google Chrome'
+
+
+def browser_options(profile=None):
+    """Selenium options for the installed browser; callers add task-specific flags."""
+    from selenium import webdriver
+    options = webdriver.EdgeOptions() if browser_kind() == 'edge' else webdriver.ChromeOptions()
+    options.add_argument('--no-first-run')
+    options.page_load_strategy = 'eager'
+    if profile:
+        options.add_argument('--user-data-dir=' + str(profile))
+    return options
+
+
+def driver_service(log_path, **kwargs):
+    """Selenium service for the installed browser. The console-hiding flag is Windows-only."""
+    from selenium.webdriver.chrome.service import Service as ChromeService
+    from selenium.webdriver.edge.service import Service as EdgeService
+    service = (EdgeService if browser_kind() == 'edge' else ChromeService)(log_output=str(log_path), **kwargs)
+    if os.name == 'nt':
+        service.creation_flags = 0x08000000
+    return service
+
+
+def browser_driver(options, service):
+    from selenium import webdriver
+    factory = webdriver.Edge if browser_kind() == 'edge' else webdriver.Chrome
+    return factory(options=options, service=service)
+
+
 def child_env(extra=None):
     env = dict(os.environ)
     env.update({'PYTHONIOENCODING': 'utf-8', 'PYTHONUNBUFFERED': '1', 'NODE_TLS_REJECT_UNAUTHORIZED': '1', 'NEXT_TELEMETRY_DISABLED': '1', 'MSEDGEDRIVER_TELEMETRY_OPTOUT': '1', 'SE_AVOID_STATS': 'true', 'NO_COLOR': '1', 'UCAS_PYTHON': str(PYTHON)})

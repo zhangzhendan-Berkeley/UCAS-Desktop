@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { ensureAuthenticated } from '../vendor/ucas-humanity-lecture-bot/dist/src/login.js';
 import { extractLectureSnapshot } from '../vendor/ucas-humanity-lecture-bot/dist/src/lecture-page.js';
 import { loadHistory, saveHistory, observe } from './lecture_history.mjs';
+import { browserChannel } from './browser_channel.mjs';
 import { isYanqiLocation } from '../vendor/ucas-humanity-lecture-bot/dist/src/campus.js';
 import { logDecisions } from './lecture_diagnostics.mjs';
 
@@ -11,7 +12,7 @@ export async function observeAndBook(config, logger, dir, payload, runAutomation
   let snapshot;
   let browser;
   try {
-    browser = await chromium.launch({ channel: 'msedge', headless: true });
+    browser = await chromium.launch({ channel: browserChannel(), headless: true });
     const statePath = process.env.UCAS_STORAGE_STATE;
     const context = await browser.newContext({ storageState: statePath && existsSync(statePath) ? statePath : undefined });
     const page = await context.newPage();

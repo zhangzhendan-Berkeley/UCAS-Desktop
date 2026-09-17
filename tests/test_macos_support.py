@@ -7,6 +7,7 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 from PySide6.QtGui import QFontDatabase
 from PySide6.QtWidgets import QApplication
+from ucasdesk import core
 from ucasdesk.core import Vault
 from ucasdesk.ui import load_fonts, style_sheet
 
@@ -56,6 +57,31 @@ class FontTests(unittest.TestCase):
         used = [name.strip().strip('"\'') for group in named for name in group.split(',')]
         missing = [name for name in used if name not in families]
         self.assertEqual(missing, [], 'stylesheet names unavailable families: %s' % missing)
+
+
+class BrowserDriverTests(unittest.TestCase):
+    def test_browser_kind_matches_an_installed_browser(self):
+        self.assertIn(core.browser_kind(), ('chrome', 'edge'))
+        expected = 'edge' if 'edge' in core.browser_path().name.lower() else 'chrome'
+        self.assertEqual(core.browser_kind(), expected)
+
+    def test_driver_service_omits_windows_only_flags_on_posix(self):
+        if os.name == 'nt':
+            self.skipTest('POSIX-only check')
+        service = core.driver_service('/tmp/ucas-driver-test.log', executable_path='/usr/bin/true')
+        self.assertFalse(getattr(service, 'creation_flags', 0))
+
+    def test_driver_service_hides_console_on_windows(self):
+        with patch('ucasdesk.core.browser_kind', return_value='chrome'):
+            with patch.object(os, 'name', 'nt'):
+                service = core.driver_service('/tmp/ucas-driver-test.log', executable_path='/usr/bin/true')
+        self.assertEqual(service.creation_flags, 0x08000000)
+
+    def test_browser_options_carry_the_shared_startup_flags(self):
+        options = core.browser_options('/tmp/ucas-profile')
+        self.assertIn('--no-first-run', options.arguments)
+        self.assertIn('--user-data-dir=/tmp/ucas-profile', options.arguments)
+        self.assertEqual(options.page_load_strategy, 'eager')
 
 
 if __name__ == '__main__':

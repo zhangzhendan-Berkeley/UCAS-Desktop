@@ -7,13 +7,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from PySide6.QtWidgets import QApplication, QDialog, QTableWidget, QPushButton
 from PySide6.QtCore import QEventLoop, QTimer
 import json
-from ucasdesk.ui import Window, STYLE, load_fonts
+from ucasdesk.ui import Window, load_fonts, style_sheet
 from ucasdesk.core import ROOT, LOGS, PYTHON
 
 app = QApplication([])
 app.setStyle('Fusion')
 load_fonts()
-app.setStyleSheet(STYLE)
+app.setStyleSheet(style_sheet())
 window = Window()
 window.resize(1380, 910)
 window.show()
