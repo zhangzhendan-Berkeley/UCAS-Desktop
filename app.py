@@ -16,13 +16,13 @@ def main():
     from PySide6.QtGui import QIcon
     from ucasdesk.instance import server_name, activate_existing, InstanceServer
     from ucasdesk.core import DATA
-    from ucasdesk.ui import Window, STYLE, load_fonts
+    from ucasdesk.ui import Window, style_sheet, load_fonts
     application = QApplication(sys.argv)
     application.setApplicationName('UCAS Desktop')
     application.setWindowIcon(QIcon(str(ROOT / 'assets/app.ico')))
     application.setStyle('Fusion')
     load_fonts()
-    application.setStyleSheet(STYLE)
+    application.setStyleSheet(style_sheet())
     lock = QLockFile(str(DATA / 'app.lock'))
     lock.setStaleLockTime(0)
     if not lock.tryLock(100):

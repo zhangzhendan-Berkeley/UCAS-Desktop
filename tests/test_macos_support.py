@@ -1,6 +1,14 @@
+import os
+import re
 import unittest
 from unittest.mock import patch
+
+os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+
+from PySide6.QtGui import QFontDatabase
+from PySide6.QtWidgets import QApplication
 from ucasdesk.core import Vault
+from ucasdesk.ui import load_fonts, style_sheet
 
 
 class MacVaultTests(unittest.TestCase):
@@ -25,6 +33,29 @@ class MacVaultTests(unittest.TestCase):
             Vault().set('iclass', 'student', 'secret', False)
             self.assertEqual(Vault().get('iclass'), {'username': '', 'password': ''})
             self.assertEqual(Vault().get('sep'), {'username': 'mac-user', 'password': 'mac-pass'})
+
+
+class FontTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        app = QApplication.instance()
+        if app is None:
+            app = QApplication([])
+        if not isinstance(app, QApplication):
+            raise unittest.SkipTest('this process already created a QCoreApplication; Qt allows only one')
+        cls.app = app
+
+    def test_selected_font_family_exists_on_this_system(self):
+        load_fonts()
+        self.assertIn(self.app.font().family(), set(QFontDatabase.families()))
+
+    def test_style_sheet_only_names_installed_families(self):
+        self.app.setStyleSheet(style_sheet())
+        named = re.findall(r'font-family:\s*([^;}]+)', style_sheet())
+        families = set(QFontDatabase.families())
+        used = [name.strip().strip('"\'') for group in named for name in group.split(',')]
+        missing = [name for name in used if name not in families]
+        self.assertEqual(missing, [], 'stylesheet names unavailable families: %s' % missing)
 
 
 if __name__ == '__main__':

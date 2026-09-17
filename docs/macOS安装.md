@@ -42,6 +42,38 @@ python3.12 scripts/setup.py
 
 Vercel 页面：<https://ucas-desktop-mobile.vercel.app>
 
+## 已在本机验证（Apple Silicon / macOS）
+
+| 项目 | 结果 |
+|---|---|
+| 安装依赖与 Python 3.12 虚拟环境 | 通过 |
+| 桌面程序启动、载入选课规划模块 | 通过 |
+| 本地 API `127.0.0.1:8765` 与手机面板页面 | 通过 |
+| 钥匙串保存/读取/忘记账号 | 通过 |
+| 任务子进程、日志脱敏、中途停止 | 通过 |
+| Selenium 驱动本机 Chrome（无头） | 通过 |
+| 单元测试 `unittest discover -s tests` | 37 项通过（2 项 Windows DPAPI 测试跳过） |
+
+`unittest discover` 中的字体检查需要图形版 Qt 应用，单独运行可执行：
+
+```bash
+.venv/bin/python -m unittest tests.test_macos_support -v
+```
+
+只读的任务面板、任务子进程、钥匙串账号都已在 macOS 上实测；学校页面登录、验证码和第三方上游模块仍需用你本人的账号逐项验证。
+
+## 手机跨网络访问（可选）
+
+同一局域网内直接使用手机面板即可。需要在外网查看时，用 Cloudflare Tunnel 把本机 8765 端口映射为 HTTPS，再把地址填进 Vercel 页面：
+
+```bash
+cloudflared tunnel --url http://127.0.0.1:8765
+```
+
+把输出的 `https://xxxx.trycloudflare.com` 填入手机面板的“桌面助手 API 地址”，访问密钥取自 `data/api-token.txt`（界面“复制手机面板地址”也包含该密钥）。
+
+临时隧道域名随机且公开可访问：接口只读、必须携带 Token，不用时请关闭隧道进程。不要把这个地址长期公开给他人。
+
 ## 限制
 
 macOS 版本已支持桌面 UI、任务 API、账号安全存储和 Chrome/Edge 浏览器路径；学校页面、验证码、驱动和第三方模块仍需用本人的账号逐项验证。Vercel 只提供手机网页，不运行桌面任务。
