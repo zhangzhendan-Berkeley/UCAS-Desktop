@@ -2,6 +2,8 @@
 import hashlib
 import sqlite3
 import time
+import math
+import secrets
 from .core import DATA
 
 
@@ -11,9 +13,25 @@ class SignLedger:
         self.path = path or DATA / 'sign-ledger.sqlite3'
         with self.connect() as db:
             db.execute('CREATE TABLE IF NOT EXISTS signs(account TEXT, id TEXT, status TEXT, attempts INTEGER, retry_at REAL, PRIMARY KEY(account,id))')
+            db.execute('CREATE TABLE IF NOT EXISTS schedules(account TEXT, id TEXT, start REAL, run_at REAL, PRIMARY KEY(account,id,start))')
 
     def connect(self):
         return sqlite3.connect(self.path, timeout=10)
+
+    def planned_time(self, identifier, start, now=None):
+        """One durable random time per account and class occurrence, shared by workers."""
+        now = time.time() if now is None else now
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            old = db.execute('SELECT run_at FROM schedules WHERE account=? AND id=? AND start=?',
+                             (self.account, identifier, start)).fetchone()
+            if old:
+                return old[0]
+            earliest = max(start - 20 * 60, math.ceil(now))
+            # Late startup keeps the existing catch-up behavior; do not invent a past time.
+            run_at = earliest + secrets.randbelow(int(start - earliest)) if earliest < start else now
+            db.execute('INSERT INTO schedules VALUES(?,?,?,?)', (self.account, identifier, start, run_at))
+            return run_at
 
     def claim(self, identifier, now=None):
         now = time.time() if now is None else now

@@ -55,6 +55,8 @@ class AutomationTests(unittest.TestCase):
             engine.tick(datetime(2026, 9, 16, 8, 0, 5))
             self.assertEqual(len(jobs.calls), 1)
             self.assertEqual(jobs.calls[0][-1]['date'], '20260916')
+            self.assertEqual(jobs.calls[0][-1]['timing'], 'random-before-20m')
+            self.assertNotIn('minutes_before', jobs.calls[0][-1], 'Old fixed-offset settings must not reach the worker')
             engine.tick(datetime(2026, 9, 17, 8))
             self.assertEqual(len(jobs.calls), 2)
             restarted = Automation(jobs, Vault(), directory=Path(tmp))
@@ -155,12 +157,71 @@ class AutomationTests(unittest.TestCase):
             with patch('adapters.iclass_worker.SignLedger', return_value=ledger), \
                  patch('adapters.iclass_worker.IClass') as client, \
                  patch('adapters.iclass_worker.datetime', Dates), patch('adapters.iclass_worker.time', clock), \
-                 patch('ucasdesk.sign_ledger.time.time', side_effect=clock.time):
+                 patch('ucasdesk.sign_ledger.time.time', side_effect=clock.time), \
+                 patch('ucasdesk.sign_ledger.secrets.randbelow', return_value=0):
                 client.return_value.query.return_value = [course]
                 client.return_value.sign.side_effect = sign
                 result = main({'mode': 'scheduled', 'courses': [course], 'minutes_before': 5, 'username': 'fixture', 'password': 'secret'})
             self.assertEqual(result, 0)
             self.assertEqual(calls, [datetime(2026, 9, 16, 8, 25), datetime(2026, 9, 16, 8, 30)])
+
+    def test_random_plan_window_restart_and_late_start(self):
+        start = datetime(2026, 9, 16, 8, 30).timestamp()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'ledger.db'
+            ledger = SignLedger('one', path)
+            with patch('ucasdesk.sign_ledger.secrets.randbelow', return_value=0) as draw:
+                first = ledger.planned_time('1234567', start, start - 3600)
+                self.assertEqual(first, start - 1200)
+                self.assertEqual(SignLedger('one', path).planned_time('1234567', start, start - 600), first)
+                self.assertEqual(draw.call_count, 1, 'Restart must not redraw a due or future time')
+            with patch('ucasdesk.sign_ledger.secrets.randbelow', side_effect=lambda upper: upper-1):
+                self.assertEqual(SignLedger('two', path).planned_time('1234567', start, start-3600), start-1)
+                self.assertEqual(ledger.planned_time('1234568', start, start-30.5), start-1)
+            with patch('ucasdesk.sign_ledger.secrets.randbelow') as draw:
+                self.assertEqual(ledger.planned_time('1234569', start, start+30), start+30)
+                draw.assert_not_called()
+            with patch('ucasdesk.sign_ledger.secrets.randbelow', return_value=0):
+                self.assertEqual(ledger.planned_time('1234567', start+86400, start+80000), start+86400-1200)
+
+    def test_concurrent_workers_share_one_random_plan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = SignLedger('one', Path(tmp) / 'ledger.db')
+            with patch('ucasdesk.sign_ledger.secrets.randbelow', return_value=437) as draw:
+                with ThreadPoolExecutor(2) as pool:
+                    times = list(pool.map(lambda _: ledger.planned_time('1234567', 10000, 7000), range(2)))
+                self.assertEqual(times, [9237, 9237])
+                self.assertEqual(draw.call_count, 1)
+
+    def test_worker_waits_for_selected_second_and_jitters_retry(self):
+        class Clock:
+            seconds = datetime(2026, 9, 16, 8).timestamp()
+            def time(self): return self.seconds
+            def monotonic(self): return self.seconds
+            def sleep(self, seconds): self.seconds += seconds
+        clock = Clock()
+        class Dates:
+            @staticmethod
+            def now(): return datetime.fromtimestamp(clock.seconds)
+            fromtimestamp = datetime.fromtimestamp
+        course = {'id':'1234567', 'courseName':'fixture', 'signStatus':'0',
+                  'classBeginTime':'2026-09-16 08:30:00', 'classEndTime':'2026-09-16 09:30:00'}
+        calls = []
+        def sign(identifier):
+            calls.append(Dates.now())
+            return {'success':len(calls)>1, 'retryable':len(calls)==1}
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = SignLedger('fixture', Path(tmp)/'ledger.db')
+            with patch('adapters.iclass_worker.SignLedger',return_value=ledger), \
+                 patch('adapters.iclass_worker.IClass') as client, \
+                 patch('adapters.iclass_worker.datetime',Dates), patch('adapters.iclass_worker.time',clock), \
+                 patch('ucasdesk.sign_ledger.time.time',side_effect=clock.time), \
+                 patch('ucasdesk.sign_ledger.secrets.randbelow',side_effect=[443,17]):
+                client.return_value.query.return_value=[course]
+                client.return_value.sign.side_effect=sign
+                self.assertEqual(main({'mode':'scheduled','courses':[course], 'minutes_before':5,
+                    'username':'fixture','password':'secret'}),0)
+            self.assertEqual(calls,[datetime(2026,9,16,8,17,23),datetime(2026,9,16,8,30,17)])
 
 
 if __name__ == '__main__':

@@ -112,7 +112,7 @@ class DashboardMixin:
         signing = bool(modules & {'iclass', 'iclass-daily', 'iclass-manual', 'lecture-sign'})
         self.home_cards[1].set_content('签到任务执行中' if signing else '当前没有签到任务',
             ['每日计划   08:00 自动查课并安排签到', '计划状态   ' + ('已启用' if self.automation.enabled('course') else '未启用')],
-            '运行中的任务可能正在等待课程开始。', '运行中' if signing else '空闲')
+            '每节课在开课前 20 分钟内随机执行，具体时间见日志。', '运行中' if signing else '空闲')
         config = self.automation.config.get('lecture', {})
         mode = '自动报名' if config.get('book') else '仅观察，不报名'
         for page, kind in ((2, 'humanity'), (9, 'science')):

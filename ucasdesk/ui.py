@@ -134,7 +134,7 @@ class Window(DashboardMixin, QMainWindow):
         self.nav.setObjectName('navigation')
         self.nav.addItems(['概览', '课程与讲座签到', '人文讲座预约', '国科大在线', '选课规划', '自动选课', '任务与日志', '设置与更新', '个人信息'])
         side.addWidget(self.nav)
-        self.runtime_hint = label('本地运行 · v0.3.2\n关闭窗口后托盘运行\n右键托盘可退出程序', 'sideText')
+        self.runtime_hint = label('本地运行 · v0.3.3\n关闭窗口后托盘运行\n右键托盘可退出程序', 'sideText')
         side.addWidget(self.runtime_hint)
         horizontal.addWidget(sidebar)
         self.pages = QStackedWidget()
@@ -391,12 +391,7 @@ class Window(DashboardMixin, QMainWindow):
         self.course_date = QDateEdit(QDate.currentDate())
         self.course_date.setCalendarPopup(True)
         self.course_date.setDisplayFormat('yyyy-MM-dd')
-        self.before = QSpinBox()
-        self.before.setRange(0, 30)
-        self.before.setValue(5)
-        self.before.setSuffix(' 分钟')
         daily = self.automation.config.get('course', {})
-        self.before.setValue(daily.get('minutes_before', 5))
         self.daily_enabled = QCheckBox('每天 08:00 自动查课表并安排签到')
         self.daily_enabled.setChecked(daily.get('enabled', False))
         layout.addLayout(row(self.daily_enabled, button('保存每日计划', self.save_daily_plan),
@@ -404,7 +399,8 @@ class Window(DashboardMixin, QMainWindow):
         self.daily_status = label('', 'muted')
         layout.addWidget(self.daily_status)
         layout.addWidget(label('个人信息页的账号自动保存，计划可随应用重启恢复；08:00 后启动会补查今天。', 'muted'))
-        layout.addLayout(row(label('日期'), self.course_date, button('查询课表', self.query_courses, True), label('开课前'), self.before,
+        layout.addWidget(label('课程签到：每节课在开课前 20 分钟内随机选定一次执行时间，重启沿用；具体时间见任务日志。', 'banner'))
+        layout.addLayout(row(label('日期'), self.course_date, button('查询课表', self.query_courses, True),
                              button('为勾选课程建立自动签到任务', self.schedule_courses)))
         self.course_table = table(['选择', '课程 / 讲座', '教师', '开始', '结束', '签到状态', '排课 ID'])
         layout.addWidget(self.course_table, 1)
@@ -446,7 +442,7 @@ class Window(DashboardMixin, QMainWindow):
                 self.disable_plan('course')
                 return
             self.account('iclass')
-            self.automation.save('course', {'enabled': True, 'minutes_before': self.before.value()})
+            self.automation.save('course', {'enabled': True, 'timing': 'random-before-20m'})
             self.automation.tick()
         except Exception as exc:
             self.error(str(exc))
@@ -569,7 +565,7 @@ class Window(DashboardMixin, QMainWindow):
             courses = [course for index, course in enumerate(self.courses) if self.course_table.item(index, 0).checkState() == Qt.Checked]
             if not courses:
                 raise ValueError('请先查询课表并勾选需要签到的课程。')
-            payload = self.account('iclass') | {'mode': 'scheduled', 'courses': courses, 'minutes_before': self.before.value()}
+            payload = self.account('iclass') | {'mode': 'scheduled', 'courses': courses, 'timing': 'random-before-20m'}
             self.start_job('iclass', f'课程自动签到 · {len(courses)} 节', PYTHON, [ROOT / 'adapters/iclass_worker.py'], payload)
         except Exception as exc:
             self.error(str(exc))

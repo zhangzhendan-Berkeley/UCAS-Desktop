@@ -1,6 +1,7 @@
 import json
 import sys
 import time
+import secrets
 from datetime import datetime
 from pathlib import Path
 
@@ -72,10 +73,21 @@ def main(payload):
         parse_time(course['classBeginTime'])
         parse_time(course['classEndTime'])
     pending = {c['id']: c for c in courses if str(c.get('signStatus')) != '1'}
+    random_timing = not payload.get('manual')
+    minutes_before = 20 if random_timing else payload.get('minutes_before', 0)
+    scheduled = {}
+    for key, course in pending.items():
+        start = parse_time(course['classBeginTime']).timestamp()
+        scheduled[key] = ledger.planned_time(key, start, time.time()) if random_timing else start - minutes_before * 60
+        print(json.dumps({'event': 'iclass.scheduled', 'id': key, 'title': course['courseName'],
+            'policy': 'random-before-20m' if random_timing else 'fixed',
+            'scheduledAt': datetime.fromtimestamp(scheduled[key]).isoformat(timespec='seconds'),
+            'catchUp': scheduled[key] < time.time()}, ensure_ascii=False), flush=True)
     attempts = {key: 0 for key in pending}
     next_attempt = {key: 0 for key in pending}
     failures = 0
-    print(f'已排队 {len(pending)} 节课；在开课前 {payload["minutes_before"]} 分钟开始，每节最多尝试 3 次。', flush=True)
+    timing = '开课前 20 分钟内随机安排（已保存，重启沿用）' if random_timing else f'开课前 {minutes_before} 分钟开始'
+    print(f'已排队 {len(pending)} 节课；{timing}，每节最多尝试 3 次。', flush=True)
     while pending:
         now = datetime.now()
         for key, course in list(pending.items()):
@@ -84,7 +96,7 @@ def main(payload):
                 del pending[key]
                 failures += 1
                 continue
-            if not eligible(course, now, payload['minutes_before']) or time.monotonic() < next_attempt[key]:
+            if now.timestamp() < scheduled[key] or not eligible(course, now, minutes_before) or time.monotonic() < next_attempt[key]:
                 continue
             try:
                 current = [course] if payload.get('manual') else client.query(now.strftime('%Y%m%d'))
@@ -95,7 +107,7 @@ def main(payload):
                     print(f'{course["courseName"]}：学校已记录签到，跳过。', flush=True)
                     del pending[key]
                     continue
-                if not eligible(updated, datetime.now(), payload['minutes_before']):
+                if (updated['classBeginTime'], updated['classEndTime']) != (course['classBeginTime'], course['classEndTime']) or not eligible(updated, datetime.now(), minutes_before):
                     raise RuntimeError('课表时间发生变化，请重新查询并建立任务。')
                 claim = ledger.claim(key)
                 if claim == 'wait':
@@ -114,6 +126,8 @@ def main(payload):
                     ledger.finish(key, 'unknown')
                     raise
                 retry_at = max(time.time() + 120, parse_time(updated['classBeginTime']).timestamp())
+                if random_timing and not result['success'] and result.get('retryable'):
+                    retry_at += secrets.randbelow(121)
                 ledger.finish(key, 'success' if result['success'] else 'retry' if result.get('retryable') else 'unknown', retry_at)
                 print(course['courseName'] + '：' + json.dumps(result, ensure_ascii=False), flush=True)
                 if result['success']:
@@ -140,7 +154,10 @@ def main(payload):
                 next_attempt[key] = time.monotonic() + max(120, retry_at - time.time())
                 print('下次允许尝试：' + datetime.fromtimestamp(retry_at).strftime('%Y-%m-%d %H:%M:%S'), flush=True)
         if pending:
-            time.sleep(10)
+            # Wake for the actual selected second, rather than rounding every class
+            # to a shared ten-second polling boundary.
+            waits = [max(scheduled[key] - time.time(), next_attempt[key] - time.monotonic(), .1) for key in pending]
+            time.sleep(min(10, min(waits)))
     return 1 if failures else 0
 
 

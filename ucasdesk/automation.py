@@ -88,7 +88,7 @@ class Automation(QObject):
             self.jobs.start('iclass-daily', f'每日 08:00 课程计划 · {today}', PYTHON,
                             [ROOT / 'adapters/iclass_worker.py'], account | {
                                 'mode': 'daily', 'date': now.strftime('%Y%m%d'),
-                                'minutes_before': config.get('minutes_before', 5)})
+                                'timing': 'random-before-20m'})
             self.daily_started = today
             self.messages[kind] = f'{today} 已启动课表检查与定时签到；结果见任务日志'
         else:
