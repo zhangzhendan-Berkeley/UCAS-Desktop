@@ -53,9 +53,13 @@ Vercel 页面：<https://ucas-desktop-mobile.vercel.app>
 | 任务子进程、日志脱敏、中途停止 | 通过 |
 | Selenium 驱动本机 Chrome（无头） | 通过 |
 | SEP 登录流程离线回归（登录、密码错误拒绝、已选表解析） | 通过 |
-| 单元测试 `unittest discover -s tests` | 41 项通过（2 项 Windows DPAPI 测试跳过） |
-| 界面冒烟（ui_smoke / automation_ui_smoke / profile_planner_smoke） | 通过 |
-| Node 测试（手机面板、浏览器通道、讲座历史） | 8 项通过 |
+| 单元测试 `unittest discover -s tests` | 60 项通过（2 项 Windows DPAPI 测试跳过） |
+| 界面冒烟（ui_smoke / automation_ui_smoke / profile_planner_smoke / dashboard_ui_smoke / refresh_ui_smoke） | 通过 |
+| Node 测试（手机面板、浏览器通道、讲座历史、讲座仪表盘） | 11 项通过 |
+| 外部模块安装（人文讲座 + 自动选课，含 tsc 构建） | 通过 |
+| 讲座离线回归（门户/校区，Playwright 使用本机 Chrome） | 通过 |
+
+账号与模块的对应关系：课程与讲座签到用**轻新课堂**账号；科研讲座时间表、人文讲座预约、自动选课用 **SEP** 账号。科研讲座时间表还需要已安装讲座模块，缺模块时提示的是安装命令，不会再误报成缺少账号。
 
 浏览器选择：装了 Edge 就用 Edge，否则用 Google Chrome，两者都没有时由 Playwright 使用自带 Chromium。Windows 专用的 `creationflags`（隐藏控制台）只在 Windows 上设置，macOS 设置它会被 Python 拒绝。
 

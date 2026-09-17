@@ -15,6 +15,13 @@ from ucasdesk.ui import Window, load_fonts, style_sheet
 from ucasdesk.automation import Automation
 from ucasdesk.core import ROOT, Vault, Store
 
+
+def preview(name):
+    """Keep regenerated screenshots out of tracked docs unless explicitly asked."""
+    target = ROOT / ('docs' if os.environ.get('UCAS_UPDATE_DOCS') == '1' else 'logs/previews') / name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    return str(target)
+
 app = QApplication([])
 load_fonts()
 app.setStyleSheet(style_sheet())
@@ -150,20 +157,20 @@ with tempfile.TemporaryDirectory() as tmp:
             window.resize(1380, 910)
             window.show()
             app.processEvents()
-            window.grab().save(str(ROOT / 'docs/desktop-profile.png'))
+            window.grab().save(preview('desktop-profile.png'))
             window.nav.setCurrentRow(4)
             app.processEvents()
-            window.grab().save(str(ROOT / 'docs/desktop-enrollment.png'))
+            window.grab().save(preview('desktop-enrollment.png'))
             window.planner_tabs.setCurrentIndex(0)
             app.processEvents()
-            window.grab().save(str(ROOT / 'docs/desktop-catalog.png'))
+            window.grab().save(preview('desktop-catalog.png'))
             window.planner_tabs.setCurrentIndex(2)
             app.processEvents()
-            window.grab().save(str(ROOT / 'docs/desktop-week.png'))
+            window.grab().save(preview('desktop-week.png'))
             window.nav.setCurrentRow(5)
             window.refresh_selection_courses()
             app.processEvents()
-            window.grab().save(str(ROOT / 'docs/desktop-selection.png'))
+            window.grab().save(preview('desktop-selection.png'))
             print('Profile, enrollment, metadata, search, category colors, shortlist persistence, details and checked-only transfer: PASS')
         finally:
             window.request_exit()

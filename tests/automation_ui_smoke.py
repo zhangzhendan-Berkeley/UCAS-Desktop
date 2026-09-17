@@ -12,6 +12,13 @@ from ucasdesk.automation import Automation
 from ucasdesk.core import Store, ROOT
 
 
+def preview(name):
+    """Keep regenerated screenshots out of tracked docs unless explicitly asked."""
+    target = ROOT / ('docs' if os.environ.get('UCAS_UPDATE_DOCS') == '1' else 'logs/previews') / name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    return str(target)
+
+
 class FakeVault:
     warning = ''
     def __init__(self): self.accounts = {}
@@ -56,13 +63,19 @@ with tempfile.TemporaryDirectory() as tmp:
                 window.show()
                 window.nav.setCurrentRow(2)
                 app.processEvents()
-                window.grab().save(str(ROOT / 'docs/desktop-automation.png'))
+                window.grab().save(preview('desktop-automation.png'))
                 assert window.lecture_clock_status.geometry().bottom() < window.pages.height()
                 window.stop_all_tasks()
                 assert not window.automation.enabled('course')
                 assert not window.automation.enabled('lecture')
                 assert not window.daily_enabled.isChecked()
                 assert not window.lecture_clock.isChecked()
+            # A missing lecture module must not be reported as a missing SEP account.
+            with patch.object(window, 'start_job', side_effect=ValueError('此模块尚未安装。请按 README 执行：python scripts/setup.py --with-external-modules')):
+                window.query_science_schedule()
+            message = errors.pop()
+            assert '此模块尚未安装' in message, message
+            assert '填写 SEP 账号' not in message, '模块缺失被误报为缺少 SEP 账号：' + message
             print('Automation UI save, credentials isolation, restore config, stop and layout: PASS')
         finally:
             window.request_exit()
