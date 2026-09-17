@@ -98,8 +98,16 @@ def main():
     marker = python_dir / 'requirements.sha256'
     if not marker.is_file() or marker.read_text() != digest:
         print('Installing isolated Python runtime dependencies…', flush=True)
+        report_path = cache / 'python-install-report.json'
+        previous = json.loads(report_path.read_text(encoding='utf-8')) if report_path.exists() else {'install': []}
         run([python, '-m', 'pip', 'install', '--disable-pip-version-check', '--quiet', '--no-compile',
-             '--only-binary=:all:', '--report', cache / 'python-install-report.json', '-r', ROOT / 'requirements.txt'])
+             '--only-binary=:all:', '--report', report_path, '-r', ROOT / 'requirements.txt'])
+        report = json.loads(report_path.read_text(encoding='utf-8'))
+        # pip reports only newly installed wheels; retain provenance for cached ones.
+        merged = {item['metadata']['name'].lower().replace('_', '-'): item
+                  for item in previous['install'] + report['install']}
+        report['install'] = list(merged.values())
+        report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
         marker.write_text(digest)
     node_dir = cache / 'node'
     if not (node_dir / 'node.exe').is_file():
