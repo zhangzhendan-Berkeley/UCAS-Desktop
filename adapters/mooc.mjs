@@ -2,7 +2,7 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deal_video, deal_pdf } from './mooc_helpers.mjs';
-import { browserChannel } from './browser_channel.mjs';
+import { browserLaunchOptions } from './browser_channel.mjs';
 const require = createRequire(new URL('../vendor/mooc-english/package.json', import.meta.url));
 const { chromium } = require('playwright');
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -16,7 +16,7 @@ try {
   const url = new URL(params.url || 'https://mooc.ucas.edu.cn/portal');
   if (!['https:', 'http:'].includes(url.protocol) || !(url.hostname === 'mooc.ucas.edu.cn' || url.hostname.endsWith('.mooc.ucas.edu.cn'))) throw new Error('请输入国科大在线页面地址。');
   context = await chromium.launchPersistentContext(join(root, 'data', 'browser-mooc'), {
-    channel: browserChannel(), headless: false, viewport: null,
+    ...browserLaunchOptions(), headless: false, viewport: null,
   });
   const page = context.pages()[0] || await context.newPage();
   await page.goto(url.href, { waitUntil: 'domcontentloaded', timeout: 60000 });

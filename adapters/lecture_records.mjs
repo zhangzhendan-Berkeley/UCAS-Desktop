@@ -1,3 +1,4 @@
+import { browserLaunchOptions } from './browser_channel.mjs';
 import { chromium } from '../vendor/ucas-humanity-lecture-bot/node_modules/playwright/index.mjs';
 import { existsSync } from 'node:fs';
 import { ensureAuthenticated } from '../vendor/ucas-humanity-lecture-bot/dist/src/login.js';
@@ -12,7 +13,7 @@ export function parseAttendance(text) {
 }
 
 export async function queryAttendance(config, logger) {
-  const browser = await chromium.launch({ channel: 'msedge', headless: config.headless });
+  const browser = await chromium.launch({ ...browserLaunchOptions(), headless: config.headless });
   try {
     const state = process.env.UCAS_STORAGE_STATE;
     const context = await browser.newContext({ storageState: state && existsSync(state) ? state : undefined });

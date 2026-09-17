@@ -1,3 +1,4 @@
+import { browserLaunchOptions } from './browser_channel.mjs';
 // One browser session, four independent reads, no registration/sign-in entry points.
 import { chromium } from '../vendor/ucas-humanity-lecture-bot/node_modules/playwright/index.mjs';
 import { existsSync } from 'node:fs';
@@ -8,7 +9,7 @@ import { parseAttendance } from './lecture_records.mjs';
 export const dashboardParts = ['humanity', 'science', 'humanity-attendance', 'science-attendance'];
 
 export async function queryDashboard(config, logger) {
-  const browser = await chromium.launch({ channel: 'msedge', headless: config.headless });
+  const browser = await chromium.launch({ ...browserLaunchOptions(), headless: config.headless });
   let failed = false;
   try {
     const state = process.env.UCAS_STORAGE_STATE;

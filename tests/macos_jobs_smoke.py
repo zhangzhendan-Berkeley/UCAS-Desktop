@@ -48,15 +48,27 @@ def main():
         finished = wait_for(lambda: not jobs.active and store.list()[0]['status'] != 'running')
         status = store.list()[0]['status']
         log = (Path(tmp) / f'{job_id}.log').read_text(encoding='utf-8')
+        assert finished and status == 'completed'
+        assert 'top-secret-value' not in log and 'hello-from-macos' in log
         print(json.dumps({'finished': finished, 'status': status,
                           'log': log, 'redacted': 'top-secret-value' not in log,
                           'saw_payload': 'hello-from-macos' in log}, ensure_ascii=False))
 
         slow = jobs.start('mooc', 'macOS 停止测试', sys.executable,
-                          [CHILD, '--sleep'], {'message': 'sleeping', 'secret': 'top-secret-value'})
+                          [CHILD, '--sleep', '--tree'], {'message': 'sleeping', 'secret': 'top-secret-value'})
         started = wait_for(lambda: 'started' in (Path(tmp) / f'{slow}.log').read_text(encoding='utf-8') if (Path(tmp) / f'{slow}.log').exists() else False)
+        assert started
+        child_pid = next(json.loads(line)['child_pid'] for line in (Path(tmp) / f'{slow}.log').read_text(encoding='utf-8').splitlines() if 'child_pid' in line)
         jobs.stop(slow)
         stopped = wait_for(lambda: not jobs.active)
+        assert stopped
+        assert [row for row in store.list() if row['id'] == slow][0]['status'] == 'stopped'
+        if os.name != 'nt':
+            import subprocess
+            def child_gone():
+                result = subprocess.run(['/bin/ps','-p',str(child_pid),'-o','stat='],capture_output=True,text=True)
+                return result.returncode != 0 or result.stdout.strip().startswith('Z')
+            assert wait_for(child_gone), 'Detached child survived Stop'
         print(json.dumps({'sleep_job_started': started, 'stopped': stopped,
                           'status': [row for row in store.list() if row['id'] == slow][0]['status']}, ensure_ascii=False))
     return 0

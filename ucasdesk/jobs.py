@@ -3,6 +3,7 @@ import codecs
 import json
 import os
 import subprocess
+import signal
 from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, Signal
 from .core import ROOT, LOGS, child_env, redact
 from .enrollment import account_hash
@@ -30,6 +31,9 @@ class Jobs(QObject):
                 raise RuntimeError('该排课已在其他签到任务中，未重复建立。')
         job_id = self.store.create(module, title)
         proc = QProcess(self)
+        if os.name != 'nt':
+            # Own a session/process group so stopping a task also stops its descendants.
+            proc.setUnixProcessParameters(QProcess.UnixProcessFlag.CreateNewSession)
         proc.setWorkingDirectory(str(cwd))
         proc.setProcessChannelMode(QProcess.MergedChannels)
         environment = QProcessEnvironment()
@@ -107,7 +111,27 @@ class Jobs(QObject):
                 subprocess.run(['taskkill', '/PID', str(pid), '/T', '/F'], stdout=subprocess.DEVNULL,
                                stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW, timeout=15)
             else:
-                item['process'].kill()
+                # Drivers may launch browsers in their own session; include those
+                # descendants before terminating this job's process group.
+                try:
+                    listing = subprocess.check_output(['/bin/ps', '-axo', 'pid=,ppid='], text=True, timeout=5)
+                except (OSError, subprocess.SubprocessError):
+                    listing = ''
+                pairs = [tuple(map(int, line.split())) for line in listing.splitlines() if len(line.split()) == 2]
+                descendants, parents = [], {pid}
+                while True:
+                    children = {child for child, parent in pairs if parent in parents} - parents
+                    if not children: break
+                    descendants.extend(children)
+                    parents.update(children)
+                for child in reversed(descendants):
+                    try: os.kill(child, signal.SIGKILL)
+                    except ProcessLookupError: pass
+                try:
+                    if os.getpgid(pid) == pid:
+                        os.killpg(pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
         item['process'].kill()
         self.changed.emit()
 

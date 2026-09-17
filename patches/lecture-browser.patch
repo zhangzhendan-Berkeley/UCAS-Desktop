@@ -1,0 +1,11 @@
+diff --git a/src/workflow.ts b/src/workflow.ts
+--- a/src/workflow.ts
++++ b/src/workflow.ts
+@@ -66,6 +66,7 @@ async function runAutomationCycle(
+ ): Promise<RunSummary> {
+   const browser = await chromium.launch({
+     headless: config.headless,
++    executablePath: process.env.UCAS_BROWSER_EXECUTABLE,
+     channel: process.env.UCAS_BROWSER_CHANNEL || "msedge"
+   });
+ 

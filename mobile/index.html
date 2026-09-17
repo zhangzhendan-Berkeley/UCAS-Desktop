@@ -24,63 +24,57 @@ label{display:block;margin-top:14px;font-size:13px;color:#62746a}
   <label for="api-url">桌面助手 API 地址</label>
   <input id="api-url" type="url" placeholder="例如 https://你的隧道.trycloudflare.com">
   <label for="token">访问密钥</label>
-  <input id="token" type="password" placeholder="输入桌面助手显示的访问密钥" autocomplete="current-password">
+  <input id="token" type="password" placeholder="输入桌面助手显示的访问密钥" autocomplete="off">
   <button id="connect">连接并刷新</button>
   <div id="status">尚未连接</div>
   <section id="jobs"></section>
   <footer>
-    Vercel 只托管这个手机页面，任务仍在你的电脑上运行。<br>
-    如果页面与桌面助手不在同一地址，请填写 Cloudflare Tunnel 提供的 HTTPS API 地址。
+    手机页面只显示状态，任务仍在你的电脑上运行。<br>
+    若单独部署页面，请填写自己桌面助手的 API 地址；外网连接需使用 HTTPS。
     不要把访问密钥发给别人。
   </footer>
 </main>
-<script>
+<script type="module">
+import {apiBase, initialConnection, createConnection} from './connection.mjs';
 const params = new URLSearchParams(location.search);
 const apiBox = document.getElementById('api-url');
 const tokenBox = document.getElementById('token');
 const status = document.getElementById('status');
 const labels = {running:'运行中',completed:'已结束',attention:'待处理：仍有未完成项',failed:'执行失败',stopped:'已停止',interrupted:'已中断',stopping:'停止中'};
-apiBox.value = params.get('api') || sessionStorage.getItem('ucasApiUrl') || location.origin;
-tokenBox.value = location.hash.slice(1) || sessionStorage.getItem('ucasToken') || '';
-history.replaceState(null, '', location.pathname + location.search);
-
-function apiBase() {
-  const value = apiBox.value.trim();
-  if (!value) throw Error('请填写桌面助手 API 地址');
-  return new URL(value).origin;
+const initial = initialConnection({origin:location.origin, requested:params.get('api'),
+  fragment:location.hash.slice(1), savedBase:sessionStorage.getItem('ucasApiUrl'), savedToken:sessionStorage.getItem('ucasToken')});
+apiBox.value = initial.base;
+tokenBox.value = initial.token;
+history.replaceState(null, '', location.pathname);
+const connection = createConnection(fetch, (base, token) => {
+  sessionStorage.setItem('ucasApiUrl', base);
+  sessionStorage.setItem('ucasToken', token);
+});
+function render(items) {
+  if (!items) return;
+  document.getElementById('jobs').replaceChildren(...items.map(item => {
+    const article = document.createElement('article'), pill = document.createElement('span');
+    const title = document.createElement('strong'), updated = document.createElement('p');
+    pill.className = 'pill'; pill.textContent = labels[item.status] || item.status;
+    title.textContent = item.title; updated.textContent = item.updated;
+    article.append(pill, title, updated); return article;
+  }));
+  status.textContent = items.length ? '已更新 ' + new Date().toLocaleTimeString() : '暂无任务';
 }
-
-async function refresh() {
-  try {
-    const base = apiBase();
-    if (!tokenBox.value) throw Error('请填写访问密钥');
-    const r = await fetch(new URL('/v1/jobs', base), {
-      headers: {Authorization: 'Bearer ' + tokenBox.value}
-    });
-    if (!r.ok) throw Error(r.status === 401 ? '密钥不正确' : '连接失败（HTTP ' + r.status + '）');
-    const items = await r.json();
-    sessionStorage.setItem('ucasApiUrl', base);
-    sessionStorage.setItem('ucasToken', tokenBox.value);
-    document.getElementById('jobs').replaceChildren(...items.map(item => {
-      const article = document.createElement('article');
-      const pill = document.createElement('span');
-      const title = document.createElement('strong');
-      const updated = document.createElement('p');
-      pill.className = 'pill';
-      pill.textContent = labels[item.status] || item.status;
-      title.textContent = item.title;
-      updated.textContent = item.updated;
-      article.append(pill, title, updated);
-      return article;
-    }));
-    status.textContent = items.length ? '已更新 ' + new Date().toLocaleTimeString() : '暂无任务';
-  } catch (error) {
-    status.textContent = error.message;
-  }
+async function connect() {
+  try { status.textContent='正在连接…'; render(await connection.connect(apiBox.value.trim(),tokenBox.value)); }
+  catch (error) { status.textContent=error.name==='AbortError'?'连接已取消或超时':error.message; }
 }
-
-document.getElementById('connect').onclick = refresh;
-if (tokenBox.value) refresh();
-setInterval(() => { if (tokenBox.value) refresh(); }, 15000);
+apiBox.addEventListener('input', () => {
+  connection.disconnect(); tokenBox.value=''; document.getElementById('jobs').replaceChildren();
+  status.textContent='地址已修改，请核对地址、填写对应密钥，再点击连接。';
+});
+tokenBox.addEventListener('input', () => { connection.disconnect(); status.textContent='密钥已修改，请点击连接。'; });
+document.getElementById('connect').onclick=connect;
+if (initial.automatic && initial.token) connect();
+setInterval(async () => {
+  try { render(await connection.refresh()); }
+  catch (error) { if(error.name!=='AbortError') status.textContent=error.message; }
+},15000);
 </script>
 </html>

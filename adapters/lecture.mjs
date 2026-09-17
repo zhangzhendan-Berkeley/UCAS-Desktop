@@ -1,3 +1,4 @@
+import { configureWorkflowBrowser } from './browser_channel.mjs';
 import { createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -18,6 +19,7 @@ try {
   process.stdin.setEncoding('utf8');
   for await (const chunk of process.stdin) input += chunk.toString('utf8');
   const p = JSON.parse(input);
+  configureWorkflowBrowser();
   process.env.UCAS_USERNAME = p.username;
   process.env.UCAS_PASSWORD = p.password;
   const root = dirname(dirname(fileURLToPath(import.meta.url)));

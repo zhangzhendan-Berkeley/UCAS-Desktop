@@ -1,6 +1,8 @@
 import os
 import re
 import unittest
+import tempfile
+from pathlib import Path
 from unittest.mock import patch
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
@@ -13,6 +15,13 @@ from ucasdesk.ui import load_fonts, style_sheet
 
 
 class MacVaultTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        for item in (patch('ucasdesk.core.DATA', Path(temporary.name)), patch('ucasdesk.core.sys.platform', 'darwin'),
+                     patch('ucasdesk.core._keychain_delete')):
+            item.start(); self.addCleanup(item.stop)
+
     @patch('ucasdesk.core._keychain_set')
     @patch('ucasdesk.core._keychain_get')
     def test_vault_uses_macos_keychain(self, get_secret, set_secret):
@@ -26,7 +35,8 @@ class MacVaultTests(unittest.TestCase):
     def test_saved_keys_survive_a_new_vault(self):
         store = {}
         with patch('ucasdesk.core._keychain_get', side_effect=store.get), \
-             patch('ucasdesk.core._keychain_set', side_effect=store.__setitem__):
+             patch('ucasdesk.core._keychain_set', side_effect=store.__setitem__), \
+             patch('ucasdesk.core._keychain_delete', side_effect=lambda key: store.pop(key,None)):
             Vault().set('sep', 'mac-user', 'mac-pass', True)
             Vault().set('iclass', 'student', 'secret', True)
             self.assertEqual(Vault().get('sep'), {'username': 'mac-user', 'password': 'mac-pass'})
@@ -34,6 +44,22 @@ class MacVaultTests(unittest.TestCase):
             Vault().set('iclass', 'student', 'secret', False)
             self.assertEqual(Vault().get('iclass'), {'username': '', 'password': ''})
             self.assertEqual(Vault().get('sep'), {'username': 'mac-user', 'password': 'mac-pass'})
+
+    def test_locked_keychain_is_not_reported_as_empty_or_written(self):
+        with patch('ucasdesk.core._keychain_get', side_effect=RuntimeError('locked')), patch('ucasdesk.core._keychain_set') as put:
+            vault = Vault()
+            self.assertIn('locked', vault.warning)
+            with self.assertRaises(RuntimeError): vault.set('sep','user','secret')
+            put.assert_not_called()
+
+    def test_forget_failure_keeps_index_and_current_account(self):
+        saved = {'__index': {'keys':['sep']}, 'sep': {'username':'user','password':'secret'}}
+        with patch('ucasdesk.core._keychain_get',side_effect=saved.get), patch('ucasdesk.core._keychain_set') as put, \
+             patch('ucasdesk.core._keychain_delete',side_effect=RuntimeError('denied')):
+            vault = Vault()
+            with self.assertRaises(RuntimeError): vault.set('sep','user','secret',False)
+            put.assert_not_called()
+            self.assertEqual(vault.get('sep'),saved['sep'])
 
 
 class FontTests(unittest.TestCase):
@@ -72,7 +98,7 @@ class BrowserDriverTests(unittest.TestCase):
         self.assertFalse(getattr(service, 'creation_flags', 0))
 
     def test_driver_service_hides_console_on_windows(self):
-        with patch('ucasdesk.core.browser_kind', return_value='chrome'):
+        with patch('ucasdesk.core.browser_kind', return_value='chrome'), patch('selenium.webdriver.chrome.service.Service') as factory:
             with patch.object(os, 'name', 'nt'):
                 service = core.driver_service('/tmp/ucas-driver-test.log', executable_path='/usr/bin/true')
         self.assertEqual(service.creation_flags, 0x08000000)

@@ -1,19 +1,18 @@
-"""Manual check: does macOS keychain save/read/delete work for this app?"""
-import json
-import subprocess
+"""Native macOS Keychain round-trip in a unique disposable service."""
+import sys
+import uuid
+from pathlib import Path
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+from ucasdesk import macos_keychain
 
-SERVICE = 'UCAS-Desktop-KeychainSelfTest'
-ACCOUNT = 'sep'
-
-
-def run(args):
-    return subprocess.run(args, capture_output=True, text=True, timeout=15)
-
-
-result = run(['security', 'add-generic-password', '-U', '-s', SERVICE, '-a', ACCOUNT, '-w',
-              json.dumps({'username': 'self-test', 'password': 'self-test-secret'}, ensure_ascii=False)])
-print('add returncode', result.returncode, result.stderr.strip()[:200])
-read = run(['security', 'find-generic-password', '-s', SERVICE, '-a', ACCOUNT, '-w'])
-print('read returncode', read.returncode, read.stdout.strip()[:200])
-delete = run(['security', 'delete-generic-password', '-s', SERVICE, '-a', ACCOUNT])
-print('delete returncode', delete.returncode, delete.stderr.strip()[:200])
+if sys.platform != 'darwin': raise SystemExit('Run this self-test on macOS.')
+macos_keychain.SERVICE = 'UCAS-Desktop-SelfTest-' + uuid.uuid4().hex
+try:
+    expected = {'username':'self-test', 'password':'disposable-test-value'}
+    macos_keychain.set('profile', expected)
+    assert macos_keychain.get('profile') == expected
+    macos_keychain.delete('profile')
+    assert macos_keychain.get('profile') is None
+    print('Native Keychain save/read/delete: PASS')
+finally:
+    macos_keychain.delete('profile')

@@ -1,4 +1,4 @@
-"""Reproducible Windows source setup; no accounts or school operations involved."""
+"""Reproducible Windows/macOS source setup; no accounts or school operations involved."""
 from __future__ import annotations
 import argparse
 import json
@@ -90,7 +90,7 @@ def prepare_mooc(repo):
 
 def prepare_lecture(repo):
     patches = [ROOT / 'patches' / name for name in
-               ('lecture-local.patch', 'lecture-sep-workbench.patch', 'lecture-table.patch', 'lecture-campus.patch')]
+               ('lecture-local.patch', 'lecture-sep-workbench.patch', 'lecture-table.patch', 'lecture-campus.patch', 'lecture-browser.patch')]
     first_missing = 0
     for index in reversed(range(len(patches))):
         reverse = subprocess.run(['git', 'apply', '--ignore-space-change', '--reverse', '--check', str(patches[index])],
@@ -119,6 +119,8 @@ def main():
                         help='另行从原仓库获取未附独立 LICENSE 的人文预约与选课依赖；请先阅读 THIRD_PARTY.md')
     parser.add_argument('--check', action='store_true', help='只检查 Python/Git/Node/npm 环境')
     args = parser.parse_args()
+    if os.name != 'nt' and sys.platform != 'darwin':
+        raise RuntimeError('当前支持 Windows 和 macOS，尚未提供 Linux 账号存储。')
     if sys.version_info[:2] < (3, 10) or sys.version_info[:2] >= (3, 13):
         raise RuntimeError('需要 Python 3.10–3.12。')
     tool('git')

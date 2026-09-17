@@ -13,6 +13,7 @@ from PySide6.QtCore import Qt, QEventLoop, QTimer
 from PySide6.QtWidgets import QApplication, QDialog, QTextBrowser, QMessageBox
 from ucasdesk.ui import Window, load_fonts, style_sheet
 from ucasdesk.automation import Automation
+from tests.vault_fixture import isolated_keychain
 from ucasdesk.core import ROOT, Vault, Store
 
 
@@ -26,7 +27,7 @@ app = QApplication([])
 load_fonts()
 app.setStyleSheet(style_sheet())
 
-with tempfile.TemporaryDirectory() as tmp:
+with isolated_keychain(), tempfile.TemporaryDirectory() as tmp:
     directory = Path(tmp)
     planner = directory / 'planner'
     planner.mkdir()

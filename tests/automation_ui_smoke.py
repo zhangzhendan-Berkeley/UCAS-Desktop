@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from PySide6.QtWidgets import QApplication
 from ucasdesk.ui import Window, load_fonts, style_sheet
 from ucasdesk.automation import Automation
+from tests.vault_fixture import isolated_keychain
 from ucasdesk.core import Store, ROOT
 
 
@@ -30,7 +31,7 @@ class FakeVault:
 app = QApplication([])
 load_fonts()
 app.setStyleSheet(style_sheet())
-with tempfile.TemporaryDirectory() as tmp:
+with isolated_keychain(), tempfile.TemporaryDirectory() as tmp:
     directory = Path(tmp)
     def engine(jobs, vault, parent):
         result = Automation(jobs, vault, parent, directory=directory)

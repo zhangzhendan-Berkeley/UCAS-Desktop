@@ -48,6 +48,9 @@ class LocalAPI:
                 if path == '/mobile/manifest.webmanifest':
                     self.send((ROOT / 'mobile/manifest.webmanifest').read_bytes(), content_type='application/manifest+json')
                     return
+                if path == '/mobile/connection.mjs':
+                    self.send((ROOT / 'mobile/connection.mjs').read_bytes(), content_type='text/javascript; charset=utf-8')
+                    return
                 if path == '/v1/health':
                     from . import __version__
                     self.send({'app': 'UCAS Desktop', 'version': __version__, 'api_version': 1})

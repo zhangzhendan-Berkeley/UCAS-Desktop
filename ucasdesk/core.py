@@ -59,33 +59,23 @@ def redact(text: str, values=()) -> str:
 
 
 def _keychain_get(key):
-    if sys.platform != 'darwin' or not shutil.which('security'):
-        return None
-    result = subprocess.run(
-        ['security', 'find-generic-password', '-s', 'UCAS-Desktop', '-a', key, '-w'],
-        capture_output=True, text=True, check=False)
-    if result.returncode != 0:
-        return None
-    try:
-        return json.loads(result.stdout)
-    except json.JSONDecodeError:
-        return None
+    from .macos_keychain import get
+    return get(key)
 
 
 def _keychain_set(key, value):
-    if sys.platform != 'darwin' or not shutil.which('security'):
-        raise RuntimeError('macOS 账号保存需要系统 security 命令。')
-    secret = json.dumps(value, ensure_ascii=False)
-    result = subprocess.run(
-        ['security', 'add-generic-password', '-U', '-s', 'UCAS-Desktop', '-a', key, '-w', secret],
-        capture_output=True, text=True, check=False)
-    if result.returncode != 0:
-        raise RuntimeError('无法写入 macOS 钥匙串：' + (result.stderr.strip() or '未知错误'))
+    from .macos_keychain import set
+    set(key, value)
+
+
+def _keychain_delete(key):
+    from .macos_keychain import delete
+    delete(key)
 
 
 def _child_options():
     flag = getattr(subprocess, 'CREATE_NO_WINDOW', None)
-    return {'creationflags': flag} if flag is not None else {}
+    return {'creationflags': flag} if os.name == 'nt' and flag is not None else {}
 
 
 KEY_INDEX = '__index'
@@ -93,7 +83,11 @@ KEY_INDEX = '__index'
 
 def _keychain_keys():
     index = _keychain_get(KEY_INDEX)
-    return list(index.get('keys', [])) if isinstance(index, dict) else []
+    if index is None: return []
+    keys = index.get('keys')
+    if not isinstance(keys, list) or any(not isinstance(k, str) or k == KEY_INDEX for k in keys):
+        raise RuntimeError('macOS 钥匙串账号索引格式不正确；原记录未修改。')
+    return list(dict.fromkeys(keys))
 
 
 def _keychain_remember(key, remember):
@@ -133,12 +127,18 @@ class Vault:
         self.accounts = {}
         self.warning = ''
         if sys.platform == 'darwin':
-            for key in _keychain_keys():
-                account = _keychain_get(key)
-                if isinstance(account, dict):
+            try:
+                # Known profiles also recover accounts written before an index update failed.
+                for key in dict.fromkeys(_keychain_keys() + ['sep', 'iclass', 'email']):
+                    account = _keychain_get(key)
+                    if account is None: continue
+                    if not all(isinstance(account.get(k), str) for k in ('username', 'password')):
+                        raise RuntimeError('macOS 钥匙串账号格式不正确；原记录未修改。')
                     self.accounts[key] = account
+            except RuntimeError as exc:
+                self.warning = str(exc)
             if self.path.exists():
-                self.warning = '检测到 Windows 账号文件；macOS 无法读取，请重新输入账号。'
+                self.warning += ' 检测到 Windows 账号文件；macOS 无法读取，请重新输入账号。'
         elif self.path.exists():
             try:
                 self.accounts = json.loads(protect(self.path.read_bytes(), decrypt=True))
@@ -151,11 +151,11 @@ class Vault:
     def set(self, key, username, password, remember=True):
         account = {'username': username.strip(), 'password': password}
         if sys.platform == 'darwin':
+            _keychain_keys()  # Fail before changing records if the keychain is locked/unreadable.
             if remember:
                 _keychain_set(key, account)
             else:
-                subprocess.run(['security', 'delete-generic-password', '-s', 'UCAS-Desktop', '-a', key],
-                               capture_output=True, check=False)
+                _keychain_delete(key)
             _keychain_remember(key, remember)
             self.accounts[key] = account
             return
@@ -218,12 +218,17 @@ def browser_path():
         candidates = [
             Path('/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge'),
             Path('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'),
-            Path('/Applications/Chromium.app/Contents/MacOS/Chromium'),
+            Path.home() / 'Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+            Path.home() / 'Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
         ]
     else:
         candidates = [
             Path(os.environ.get('PROGRAMFILES(X86)', 'C:/Program Files (x86)')) / 'Microsoft/Edge/Application/msedge.exe',
+            Path(os.environ.get('PROGRAMFILES', 'C:/Program Files')) / 'Microsoft/Edge/Application/msedge.exe',
+            Path(os.environ.get('LOCALAPPDATA', '')) / 'Microsoft/Edge/Application/msedge.exe',
             Path(os.environ.get('PROGRAMFILES', 'C:/Program Files')) / 'Google/Chrome/Application/chrome.exe',
+            Path(os.environ.get('PROGRAMFILES(X86)', 'C:/Program Files (x86)')) / 'Google/Chrome/Application/chrome.exe',
+            Path(os.environ.get('LOCALAPPDATA', '')) / 'Google/Chrome/Application/chrome.exe',
         ]
     for path in candidates:
         if path.is_file():
@@ -245,6 +250,7 @@ def browser_options(profile=None):
     """Selenium options for the installed browser; callers add task-specific flags."""
     from selenium import webdriver
     options = webdriver.EdgeOptions() if browser_kind() == 'edge' else webdriver.ChromeOptions()
+    options.binary_location = str(browser_path())
     options.add_argument('--no-first-run')
     options.page_load_strategy = 'eager'
     if profile:
