@@ -6,6 +6,26 @@ import json
 from pathlib import Path
 import shutil
 import sys
+import ast
+
+
+def validate_dependencies(source, target, names):
+    """Inspect the effective package, including imports inside feature handlers."""
+    package = target / 'ucasdesk'
+    paths = {str(p.relative_to(target)).replace('\\', '/'): p for p in package.glob('*.py')}
+    paths.update({name: source / name for name in names if name.startswith('ucasdesk/') and name.endswith('.py')})
+    for name, path in paths.items():
+        tree = ast.parse(path.read_text(encoding='utf-8-sig'), filename=name)
+        for node in ast.walk(tree):
+            modules = []
+            if isinstance(node, ast.ImportFrom):
+                if node.level == 1 and node.module: modules.append(node.module.split('.')[0])
+                elif not node.level and node.module and node.module.startswith('ucasdesk.'): modules.append(node.module.split('.')[1])
+            elif isinstance(node, ast.Import):
+                modules += [a.name.split('.')[1] for a in node.names if a.name.startswith('ucasdesk.')]
+            for module in modules:
+                if f'ucasdesk/{module}.py' not in paths:
+                    raise ValueError(f'更新包缺少应用依赖：ucasdesk/{module}.py（由 {name} 引用）；尚未修改程序文件。')
 
 
 def apply(source, target):
@@ -25,6 +45,7 @@ def apply(source, target):
         if hashlib.sha256(incoming.read_bytes()).hexdigest() != expected:
             raise ValueError('更新文件校验失败：' + name)
         files.append((relative, incoming, destination))
+    validate_dependencies(source, target, manifest['files'])
     lock = QLockFile(str(target / 'data/app.lock'))
     lock.setStaleLockTime(0)
     if not lock.tryLock(100):

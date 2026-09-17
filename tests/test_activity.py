@@ -50,8 +50,9 @@ class ActivityTests(unittest.TestCase):
 
     def test_mail_tls_auth_check_no_send_and_self_only(self):
         factory = MagicMock()
-        smtp = factory.return_value.__enter__.return_value
+        smtp = factory.return_value
         smtp.send_message.return_value = {}
+        smtp.esmtp_features = {'auth': 'LOGIN PLAIN'}
         account = {'username': 'fixture@mails.ucas.ac.cn', 'password': 'fixture-password'}
         send_mail(account, smtp_factory=factory)
         smtp.send_message.assert_not_called()
@@ -65,15 +66,16 @@ class ActivityTests(unittest.TestCase):
     def test_failed_auth_hides_server_response(self):
         import smtplib
         factory = MagicMock()
-        factory.return_value.__enter__.return_value.login.side_effect = smtplib.SMTPAuthenticationError(535, b'secret server echo')
+        factory.return_value.login.side_effect = smtplib.SMTPAuthenticationError(535, b'secret server echo')
         with self.assertRaisesRegex(ValueError, '客户端专用密码') as caught:
             send_mail({'username': 'fixture@mails.ucas.ac.cn', 'password': 'fixture-password'}, smtp_factory=factory)
         self.assertNotIn('secret', str(caught.exception))
 
     def test_qq_sender_separate_recipient_and_header_injection(self):
         factory = MagicMock()
-        smtp = factory.return_value.__enter__.return_value
+        smtp = factory.return_value
         smtp.send_message.return_value = {}
+        smtp.esmtp_features = {'auth': 'LOGIN PLAIN'}
         account = {'username': 'fixture@qq.com', 'password': 'fixture-authorization-code'}
         send_mail(account, test=True, smtp_factory=factory, recipient='receiver@mails.ucas.ac.cn')
         self.assertEqual(factory.call_args.args, ('smtp.qq.com', 465))

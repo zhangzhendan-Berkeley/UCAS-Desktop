@@ -134,7 +134,7 @@ class Window(DashboardMixin, QMainWindow):
         self.nav.setObjectName('navigation')
         self.nav.addItems(['概览', '课程与讲座签到', '人文讲座预约', '国科大在线', '选课规划', '自动选课', '任务与日志', '设置与更新', '个人信息'])
         side.addWidget(self.nav)
-        self.runtime_hint = label('本地运行 · v0.3.0\n关闭窗口后托盘运行\n右键托盘可退出程序', 'sideText')
+        self.runtime_hint = label('本地运行 · v0.3.1\n关闭窗口后托盘运行\n右键托盘可退出程序', 'sideText')
         side.addWidget(self.runtime_hint)
         horizontal.addWidget(sidebar)
         self.pages = QStackedWidget()
@@ -155,6 +155,7 @@ class Window(DashboardMixin, QMainWindow):
         self.jobs.changed.connect(self.refresh_jobs)
         self.jobs.output.connect(self.receive_output)
         self.jobs.ended.connect(self.task_notification)
+        self.jobs.ended.connect(self.refresh_job_finished)
         self.refresh_jobs()
         self.statusBar().showMessage('就绪。自动任务需要你在相应模块配置后启动。')
         self.clock = QTimer(self)
@@ -436,7 +437,7 @@ class Window(DashboardMixin, QMainWindow):
             payload = self.account('sep') | {'action': 'science-schedule', 'preview': True}
             self.start_job('lecture', '科研讲座时间表 · 只读查询', NODE, [ROOT / 'adapters/lecture.mjs'], payload)
         except Exception as exc:
-            self.error('请先在“个人信息”填写 SEP 账号。' + str(exc))
+            self.error('科研讲座查询未启动：' + str(exc))
 
     def save_daily_plan(self):
         try:
@@ -545,7 +546,7 @@ class Window(DashboardMixin, QMainWindow):
                 self.course_table.setItem(index, column, cell)
         self.statusBar().showMessage(f'查询到 {len(courses)} 节课程 / 排课。')
 
-    def start_job(self, module, title, program, args, payload):
+    def start_job(self, module, title, program, args, payload, open_logs=True):
         if module in ('lecture', 'selection', 'mooc'):
             from .portable import ready
             entry = next(m for m in read_json(ROOT / 'modules.json', []) if m['id'] == module)
@@ -558,8 +559,10 @@ class Window(DashboardMixin, QMainWindow):
             if module == 'mooc' and not (ROOT / 'adapters/mooc_helpers.mjs').is_file():
                 raise ValueError('慕课适配器尚未生成，请重新运行 python scripts/setup.py。')
         job_id = self.jobs.start(module, title, program, args, payload)
-        self.nav.setCurrentRow(6)
-        self.select_job(job_id)
+        if open_logs:
+            self.nav.setCurrentRow(6)
+            self.select_job(job_id)
+        return job_id
 
     def schedule_courses(self):
         try:
@@ -1050,6 +1053,7 @@ class Window(DashboardMixin, QMainWindow):
                 continue
             try:
                 message = json.loads(line)
+                self.refresh_receive_event(job_id, message)
                 self.activity_event(job_id, message)
                 meta = self.account_jobs.get(job_id)
                 if meta and message.get('event') == 'account.check':

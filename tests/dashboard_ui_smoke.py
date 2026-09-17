@@ -93,7 +93,7 @@ with tempfile.TemporaryDirectory() as tmp:
                 assert '昨日讲座' not in window.lecture_today_text(kind)
             assert '今日测试讲座' in window.home_cards[9].text()
             window.activity_event('lecture', {'event':'lecture.attendance','records':{'humanity':{'valid':0,'total':2},'science':{'valid':1,'total':1}}})
-            assert '人文 0 次 / 科研 1 次' in window.attendance_status.text()
+            assert '人文 0 次' in window.attendance_status.text() and '科研 1 次' in window.attendance_status.text()
             def configure():
                 dialog = app.activeModalWidget()
                 checks = dialog.findChildren(QCheckBox)

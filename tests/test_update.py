@@ -43,3 +43,24 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual((self.target/'ucasdesk/ui.py').read_text(),'old')
         self.manifest['files']={'data/accounts.dpapi':'bad'};self.save()
         with self.assertRaises(ValueError): apply(self.source,self.target)
+
+    def test_missing_lazy_import_dependency_rejected_before_mutation(self):
+        code = 'def start_job():\n    from .portable import ready\n'
+        (self.source/'ucasdesk/ui.py').write_text(code)
+        self.manifest['files']['ucasdesk/ui.py'] = hashlib.sha256((self.source/'ucasdesk/ui.py').read_bytes()).hexdigest()
+        self.save()
+        with self.assertRaisesRegex(ValueError, 'portable.py'): apply(self.source, self.target)
+        self.assertEqual((self.target/'ucasdesk/ui.py').read_text(), 'old')
+        (self.source/'ucasdesk/portable.py').write_text('def ready(): pass')
+        self.manifest['files']['ucasdesk/portable.py'] = hashlib.sha256(b'def ready(): pass').hexdigest()
+        self.save()
+        apply(self.source, self.target)
+        self.assertTrue((self.target/'ucasdesk/portable.py').exists())
+
+    def test_complete_overlay_includes_unchanged_dependencies(self):
+        from scripts.build_update import prepare
+        root = self.root/'source';(root/'ucasdesk').mkdir(parents=True)
+        for name in ('ui.py','portable.py'): (root/'ucasdesk'/name).write_text('# source')
+        for name in ('README.md','使用指南.md'): (root/name).write_text('fixture')
+        manifest = prepare(root, self.root/'prepared', 'test')
+        self.assertIn('ucasdesk/portable.py', manifest)

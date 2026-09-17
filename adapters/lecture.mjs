@@ -11,6 +11,7 @@ import { observeAndBook } from './lecture_observe.mjs';
 import { queryAttendance } from './lecture_records.mjs';
 import { queryLectureCalendars } from './lecture_calendar.mjs';
 import { summarizeDecisionReasonWithRules } from '../vendor/ucas-humanity-lecture-bot/dist/src/filter.js';
+import { queryDashboard } from './lecture_dashboard.mjs';
 
 try {
   let input = '';
@@ -33,7 +34,9 @@ try {
   }));
   const config = loadConfig(['--config', configPath]);
   const logger = new Logger('info');
-  if (p.action === 'calendars') {
+  if (p.action === 'dashboard-refresh') {
+    if (!await queryDashboard(config, logger)) process.exitCode = 1;
+  } else if (p.action === 'calendars') {
     await queryLectureCalendars(config, logger);
   } else if (p.action === 'attendance') {
     await queryAttendance(config, logger);

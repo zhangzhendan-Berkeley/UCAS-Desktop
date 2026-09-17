@@ -9,47 +9,73 @@ from .core import DATA, ROOT, NODE, read_json, write_json, redact
 from .activity import scope, MILESTONES, NOTICE_DEFAULTS
 from .presentation import color_item, enable_copy
 from .mail import send_mail, validate_address
+from .overview_refresh import RefreshBatch, LECTURE_PARTS, read_iclass_overview
+from .dashboard_widgets import StatusCard, StatTile
 
 
 class DashboardMixin:
     def build_home(self):
         from .ui import label, button, row, table
-        outer = self.page('校园日常，一目了然', '后台计划、正在执行的任务与学校确认结果分别展示。关闭窗口后可在托盘继续运行。')
+        outer = self.page('校园日常，一目了然', datetime.now().strftime('%Y 年 %m 月 %d 日') + '  ·  雁栖湖  /  我的校园工作台')
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.NoFrame)
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(0, 0, 12, 0)
-        self.home_status = label('', 'banner')
-        layout.addWidget(self.home_status)
+        layout.setSpacing(18)
+        self.home_status = label('', 'muted')
+        self.refresh_all_button = button('一键刷新全部信息', self.refresh_all, True)
+        toolbar = QHBoxLayout()
+        toolbar.addWidget(self.home_status, 1)
+        toolbar.addWidget(button('自定义概览', self.customize_home))
+        toolbar.addWidget(self.refresh_all_button)
+        layout.addLayout(toolbar)
+        self.refresh_summary = label('学校信息按需同步，后台任务状态每 5 秒更新。', 'muted')
+        self.refresh_details_button = button('查看刷新明细', self.toggle_refresh_details)
+        self.refresh_details_button.setCheckable(True)
+        progress = QHBoxLayout()
+        progress.addWidget(self.refresh_summary, 1)
+        progress.addWidget(self.refresh_details_button)
+        layout.addLayout(progress)
+        self.refresh_all_status = label('一次查询今日课程、已选课程、人文 / 科研讲座及有效听讲次数。', 'muted')
+        self.refresh_all_status.hide()
+        layout.addWidget(self.refresh_all_status)
+        self.home_stats = QWidget()
+        stat_layout = QHBoxLayout(self.home_stats)
+        stat_layout.setContentsMargins(0, 0, 0, 0)
+        stat_layout.setSpacing(14)
+        self.stat_tiles = {}
+        for key, title, unit, accent in [('days', '自动签到天数', '天', '#376851'), ('signs', '成功签到', '次', '#476797'),
+                ('bookings', '讲座预约成功', '场', '#916032'), ('selections', '成功选课', '门', '#756295')]:
+            tile = self.stat_tiles[key] = StatTile(title, unit, accent)
+            stat_layout.addWidget(tile, 1)
+        layout.addWidget(self.home_stats)
         self.achievement_notice = label('每一次完成，都值得被记录。', 'muted')
         layout.addWidget(self.achievement_notice)
-        self.home_stats = label('尚无已确认的自动操作记录。')
-        layout.addWidget(self.home_stats)
         grid = QGridLayout()
+        grid.setHorizontalSpacing(18)
+        grid.setVerticalSpacing(18)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
         self.home_grid = grid
         self.home_card_widgets = {}
         self.home_default_colors = {}
         self.home_cards = {}
-        cards = [('课程与讲座签到', 1, '#e9f3ee', '#376851'), ('人文讲座 · 预约与今日安排', 2, '#faf0e2', '#936337'),
-                 ('国科大在线', 3, '#ebeff9', '#556b99'), ('选课规划', 4, '#eeeaf6', '#756295'),
-                 ('自动选课', 5, '#e5f2f4', '#367780'), ('科研讲座 · 今日安排', 9, '#edf1e2', '#6b7a41'), ('任务与日志', 6, '#f7eaed', '#936171')]
+        cards = [('课程与讲座签到', 1, '#d5e8dd', '#315e49'), ('人文讲座', 2, '#f0dfc7', '#85572e'),
+                 ('国科大在线', 3, '#dae3f3', '#48618e'), ('选课规划', 4, '#e1d9ee', '#695383'),
+                 ('自动选课', 5, '#cfe5e8', '#2e6871'), ('科研讲座', 9, '#dfe6c9', '#586734'), ('任务与日志', 6, '#edd8df', '#855363')]
         for index, (title, page, bg, fg) in enumerate(cards):
-            card = QGroupBox(title)
-            card.setStyleSheet(f'QGroupBox {{background:{bg}; border:1px solid {bg}; border-top:3px solid {fg}; border-radius:10px; margin-top:12px; padding:14px 10px 8px;}} QGroupBox::title {{color:{fg}; subcontrol-origin:margin; left:12px;}} QLabel {{background:transparent;}}')
-            content = QVBoxLayout(card)
-            status = label('读取状态中…')
-            content.addWidget(status)
-            content.addWidget(button('查看详情 →', lambda checked=False, p=page: self.nav.setCurrentRow(1 if p == 9 else p)))
-            self.home_cards[page] = status
+            action = '查看今日讲座' if page == 9 else '管理' + title
+            callback = self.show_today_lectures if page == 9 else lambda checked=False, p=page: self.nav.setCurrentRow(p)
+            card = StatusCard(title, fg, action, callback)
+            self.home_cards[page] = card
             self.home_card_widgets[page] = card
             self.home_default_colors[page] = bg
             grid.addWidget(card, index // 2, index % 2)
         layout.addLayout(grid)
-        layout.addLayout(row(button('自定义概览', self.customize_home), button('刷新今天的课程', self.refresh_today), button('同步学校听讲次数', self.sync_attendance),
-            button('查看成就', self.show_achievements), button('打开使用说明', lambda: self.open_path(ROOT / '使用指南.md'))))
-        layout.addLayout(row(button('刷新人文 / 科研讲座安排', self.sync_calendars), button('查看今天全部讲座', self.show_today_lectures)))
+        layout.addLayout(row(button('查看今天全部讲座', self.show_today_lectures), button('查看成就', self.show_achievements),
+            button('打开使用说明', lambda: self.open_path(ROOT / '使用指南.md'))))
         self.attendance_status = label('学校有效听讲：尚未同步（不等于零次）', 'muted')
         layout.addWidget(self.attendance_status)
         self.today_status = label('今日课程 · 尚未查询轻新课堂', 'muted')
@@ -75,31 +101,46 @@ class DashboardMixin:
             return
         active = [x for x in self.jobs.active.values() if not x.get('stopping')]
         modules = {x['module'] for x in active}
-        self.home_status.setText(f'{len(self.home_cards)} 个状态模块   ·   {len(active)} 项任务运行中   ·   状态每 5 秒刷新')
-        self.home_cards[1].setText(('每日 08:00 计划：已启用' if self.automation.enabled('course') else '每日 08:00 计划：未启用') +
-            ('\n签到任务正在运行 / 等待课程开始' if modules & {'iclass', 'iclass-daily', 'iclass-manual', 'lecture-sign'} else '\n目前没有执行中的签到任务'))
+        self.home_status.setText(f'{len(active)} 项任务运行中  ·  关闭窗口后继续托盘运行')
+        signing = bool(modules & {'iclass', 'iclass-daily', 'iclass-manual', 'lecture-sign'})
+        self.home_cards[1].set_content('签到任务执行中' if signing else '当前没有签到任务',
+            ['每日计划   08:00 自动查课并安排签到', '计划状态   ' + ('已启用' if self.automation.enabled('course') else '未启用')],
+            '运行中的任务可能正在等待课程开始。', '运行中' if signing else '空闲')
         config = self.automation.config.get('lecture', {})
         mode = '自动报名' if config.get('book') else '仅观察，不报名'
-        self.home_cards[2].setText(('定点巡检已启用 · ' + mode if config.get('enabled') else '定点巡检未启用') +
-            f'\n仅雁栖湖 · 开始时段 {config.get("from", "00:00")}–{config.get("to", "23:59")}' +
-            ('\n本轮正在执行' if modules & {'lecture', 'lecture-clock'} else '\n' + self.automation.description('lecture')))
-        self.home_cards[2].setText(self.lecture_today_text('humanity') + '\n' + self.home_cards[2].text())
-        self.home_cards[9].setText(self.lecture_today_text('science'))
-        self.home_cards[3].setText('视频 / 文档任务正在运行\n进度与实际结果见任务日志' if 'mooc' in modules else '慕课任务未运行\n可在国科大在线模块启动')
+        for page, kind in ((2, 'humanity'), (9, 'science')):
+            saved, lectures = self.lecture_today_rows(kind)
+            headline = f'今日 {len(lectures)} 场讲座' if saved else '今日安排待同步'
+            details = [f'{r.get("time", "时间待定")}\n{r["title"]} · {r.get("location") or "地点未提供"}' for r in lectures]
+            if not details: details = ['当前列表未见今日安排' if saved else '点击顶部“一键刷新全部信息”获取日程']
+            if page == 2:
+                details += [('巡检已启用 · ' + mode if config.get('enabled') else '定点巡检未启用'),
+                    f'仅雁栖湖 · 开始时段 {config.get("from", "00:00")}–{config.get("to", "23:59")}']
+            note = '最近同步  ' + saved['at'].replace('T', ' ') if saved else '列表及有效听讲记录均来自学校查询。'
+            self.home_cards[page].set_content(headline, details, note, '今日安排')
+        self.home_cards[3].set_content('视频 / 文档处理中' if 'mooc' in modules else '等待启动学习任务',
+            ['任务进度与剩余项目可在日志中查看'], '处理结束后，请在学校平台核对课程完成情况。', '运行中' if 'mooc' in modules else '空闲')
         state = read_json(self.activity.path.parent / 'planner/app_state.json', {})
         planned = len(self.planner.selected) if self.planner else len(state.get('selected_course_ids', []))
         snapshot = self.enrollment.current()
-        self.home_cards[4].setText(f'规划清单 {planned} 门 · 备选 {len(read_json(self.activity.path.parent / "planner/alternatives.json", []))} 门\n' +
-            (f'学校已选快照 {len(snapshot.get("courses", []))} 门（{snapshot.get("source", "")}）' if snapshot else '尚无当前账号的已选同步记录'))
-        self.home_cards[5].setText('自动选课任务已启动\n正在登录、等待设定时间或检查余量' if 'selection' in modules else '自动选课任务未开启\n从规划清单勾选目标课程后启动')
-        self.home_cards[6].setText(f'{len(active)} 项任务运行中\n蓝：运行 · 绿：完成 · 红：失败 · 灰紫：停止')
+        self.home_cards[4].set_content(f'{planned} 门课程已加入规划',
+            [f'备选收藏   {len(read_json(self.activity.path.parent / "planner/alternatives.json", []))} 门',
+            f'学校已选   {len(snapshot.get("courses", []))} 门（{snapshot.get("source", "")}）' if snapshot else '学校已选   尚未同步'],
+            '规划周课表见下方；实际选课状态以学校为准。', '课程清单')
+        self.home_cards[5].set_content('自动选课任务已启动' if 'selection' in modules else '尚未启动选课任务',
+            ['正在登录、等待设定时间或检查余量' if 'selection' in modules else '在规划清单勾选目标，再导入自动选课'],
+            '选课结果与失败原因会记录在任务日志中。', '运行中' if 'selection' in modules else '空闲')
+        self.home_cards[6].set_content(f'{len(active)} 项任务正在运行',
+            ['运行中 · 蓝色    已完成 · 绿色', '执行失败 · 红色    已停止 · 灰紫色'], '打开日志可查看进度、复制结果和排查错误。', '执行记录')
         iclass, sep = scope(self.vault, 'iclass'), scope(self.vault, 'sep')
         counts = self.activity.counts(iclass, sep)
-        self.home_stats.setText(f'自动签到 {counts["days"]} 天   ·   成功签到 {counts["signs"]} 次   ·   讲座预约 {counts["bookings"]} 场   ·   成功选课 {counts["selections"]} 门')
+        for key, tile in self.stat_tiles.items(): tile.set_value(counts[key])
         records = self.activity.get_snapshot(sep, 'attendance')
         if records:
             r = records['payload']
-            self.attendance_status.setText(f'学校有效听讲：人文 {r["humanity"]["valid"]} 次 / 科研 {r["science"]["valid"]} 次   ·   查询时间 {records["at"].replace("T", " ")}')
+            self.attendance_status.setText('学校有效听讲：' + ' / '.join(
+                f'{title} {r[kind]["valid"]} 次（{r[kind].get("fetched_at", records["at"]).replace("T", " ")}）' if kind in r else title + ' 尚未同步'
+                for kind, title in [('humanity', '人文'), ('science', '科研')]))
         else:
             self.attendance_status.setText('学校有效听讲：尚未同步（不等于零次）')
         today = self.activity.get_snapshot(iclass, 'today')
@@ -121,6 +162,131 @@ class DashboardMixin:
         self.apply_home_preferences()
         self.pump_mail()
 
+    def refresh_all(self):
+        if getattr(self, '_overview_refresh', None) and not self._overview_refresh.finished:
+            return
+        batch = self._overview_refresh = RefreshBatch()
+        self.refresh_all_button.setEnabled(False)
+        self.refresh_dashboard()
+        batch.result('local', True, '任务状态、规划、成果与邮件状态已读取')
+        self.update_refresh_progress(batch)
+        try:
+            account = self.account('iclass')
+            version = self.account_version('iclass')
+            date = datetime.now().strftime('%Y%m%d')
+            identity = scope(self.vault, 'iclass')
+            def received(results, account=account):
+                if self._overview_refresh is not batch: return
+                for part in ('today', 'enrollment'):
+                    result = results.get(part, {})
+                    try:
+                        if self.account_version('iclass') != version:
+                            raise ValueError('查询期间账号已更改，请重新刷新')
+                        if not result.get('ok'): raise ValueError(result.get('error', '查询未完成'))
+                        value = result['value']
+                        if part == 'today':
+                            self.activity.snapshot(identity, 'today', {'date': date, 'courses': value})
+                            if self.course_date.date().toString('yyyyMMdd') == date: self.populate_courses(value)
+                            detail = f'{len(value)} 节课'
+                        else:
+                            self.enrollment.save(value, account['username'])
+                            if not self.planner: self.load_planner()
+                            if self.planner: self.planner.apply_enrollment()
+                            detail = f'{len(value["courses"])} 门（轻新课堂）'
+                            self.enrollment_status.setText('一键刷新：已更新学校已选课程 · ' + detail)
+                        batch.result(part, True, detail)
+                    except Exception as exc:
+                        batch.result(part, False, redact(str(exc), self.vault.secret_values()) + '；保留上次结果')
+                self.update_refresh_progress(batch)
+            def failed(error):
+                for part in ('today', 'enrollment'): batch.result(part, False, redact(error, self.vault.secret_values()))
+                self.update_refresh_progress(batch)
+            self.background(lambda account=account: read_iclass_overview(account, date), received, failed)
+        except Exception as exc:
+            for part in ('today', 'enrollment'): batch.result(part, False, str(exc))
+        try:
+            account = self.account('sep')
+            batch.versions['sep'] = self.account_version('sep')
+            import time
+            deadline = time.monotonic() + 120
+            if hasattr(self, '_refresh_wait'):
+                self._refresh_wait.stop()
+                self._refresh_wait.deleteLater()
+            self._refresh_wait = QTimer(self)
+            self._refresh_wait.setInterval(1000)
+            def start_when_free():
+                if self._quitting or self._overview_refresh is not batch:
+                    self._refresh_wait.stop()
+                    return
+                busy = any(item['module'] in ('lecture', 'lecture-clock') for item in self.jobs.active.values())
+                if busy and time.monotonic() < deadline:
+                    for part in LECTURE_PARTS: batch.parts[part] = ('pending', '等待当前讲座任务结束，不打断它')
+                    self.update_refresh_progress(batch)
+                    return
+                self._refresh_wait.stop()
+                try:
+                    if busy: raise ValueError('讲座模块持续忙碌，稍后再刷新')
+                    if self.account_version('sep') != batch.versions['sep']: raise ValueError('SEP 账号已修改，请重新刷新')
+                    batch.account = scope(self.vault, 'sep')
+                    batch.lecture_job = self.start_job('lecture', '一键刷新 · 讲座及听讲记录（只读）', NODE,
+                        [ROOT / 'adapters/lecture.mjs'], account | {'action': 'dashboard-refresh', 'preview': True}, open_logs=False)
+                except Exception as exc:
+                    for part in LECTURE_PARTS: batch.result(part, False, redact(str(exc), self.vault.secret_values()))
+                self.update_refresh_progress(batch)
+            self._refresh_wait.timeout.connect(start_when_free)
+            self._refresh_wait.start()
+            start_when_free()
+        except Exception as exc:
+            for part in LECTURE_PARTS: batch.result(part, False, str(exc))
+        self.update_refresh_progress(batch)
+
+    def update_refresh_progress(self, batch):
+        if self._overview_refresh is not batch: return
+        self.refresh_all_status.setText(redact(batch.summary(), self.vault.secret_values()))
+        self.refresh_summary.setText(batch.summary().splitlines()[0])
+        self.refresh_all_button.setEnabled(batch.finished)
+        self.refresh_all_button.setText('一键刷新全部信息' if batch.finished else '刷新中…')
+        self.refresh_dashboard()
+
+    def toggle_refresh_details(self, checked):
+        self.refresh_all_status.setVisible(checked)
+        self.refresh_details_button.setText('收起刷新明细' if checked else '查看刷新明细')
+
+    def refresh_receive_event(self, job_id, event):
+        batch = getattr(self, '_overview_refresh', None)
+        if not batch or job_id != batch.lecture_job or event.get('event') != 'dashboard.part': return
+        part = event.get('part')
+        if part not in LECTURE_PARTS or batch.parts[part][0] != 'pending': return
+        try:
+            if self.account_version('sep') != batch.versions['sep']: raise ValueError('账号已更改，结果未应用')
+            if not event.get('ok'): raise ValueError(event.get('error', '查询未完成'))
+            value = event['value']
+            if part in ('humanity', 'science'):
+                if not isinstance(value.get('rows'), list): raise ValueError('讲座列表格式不正确')
+                self.activity.snapshot(batch.account, 'calendar-' + part, value)
+                detail = f'当前列表 {len(value["rows"])} 场'
+                if part == 'science':
+                    self.science_rows = value['rows']
+                    self.science_choose.setEnabled(bool(self.science_rows))
+                    self.science_status.setText('一键刷新：' + detail + '；可选择场次')
+            else:
+                if not isinstance(value.get('valid'), int) or value['valid'] < 0: raise ValueError('有效听讲次数无法识别')
+                records = self.activity.get_snapshot(batch.account, 'attendance').get('payload', {})
+                records[part.split('-')[0]] = value | {'fetched_at': datetime.now().isoformat(timespec='seconds')}
+                self.activity.snapshot(batch.account, 'attendance', records)
+                detail = f'有效 {value["valid"]} 次'
+            batch.result(part, True, detail)
+        except Exception as exc:
+            batch.result(part, False, redact(str(exc), self.vault.secret_values()) + '；保留上次结果')
+        self.update_refresh_progress(batch)
+
+    def refresh_job_finished(self, job_id, meta):
+        batch = getattr(self, '_overview_refresh', None)
+        if not batch or batch.lecture_job != job_id: return
+        for part in LECTURE_PARTS:
+            batch.result(part, False, '查询未返回结果或已停止，保留上次结果；详见任务日志')
+        self.update_refresh_progress(batch)
+
     def apply_home_preferences(self):
         preferences = self.settings.get('dashboard', {})
         position = 0
@@ -134,16 +300,8 @@ class DashboardMixin:
                 position += 1
             color = QColor(config.get('color', self.home_default_colors[page]))
             if not color.isValid(): color = QColor(self.home_default_colors[page])
-            # WCAG luminance to retain readable text even with a dark user color.
-            values = [((c / 255 + .055) / 1.055) ** 2.4 if c / 255 > .04045 else c / 255 / 12.92 for c in (color.red(), color.green(), color.blue())]
-            luminance = sum(a*b for a,b in zip(values, (.2126,.7152,.0722)))
-            fg = '#172c29' if luminance > .3 else '#ffffff'
-            card.setStyleSheet(f'QGroupBox {{background:{color.name()}; border:1px solid {color.darker(108).name()}; border-radius:10px; margin-top:12px; padding:14px 10px 8px;}} QGroupBox::title {{color:{fg}; subcontrol-origin:padding; left:12px;}} QLabel {{background:transparent; color:{fg};}}')
-            status = self.home_cards[page]
-            full = status.text()
-            status.setToolTip(full)
-            lines = {'compact': 1, 'normal': 3, 'detailed': 100}.get(config.get('detail', 'detailed'), 100)
-            status.setText('\n'.join(full.splitlines()[:lines]))
+            card.configure_color(color)
+            card.configure_detail(config.get('detail', 'detailed'))
         for key, widgets in {'stats': [self.home_stats, self.achievement_notice], 'today': [self.today_status, self.today_table],
                 'week': [self.week_status, self.home_week], 'attendance': [self.attendance_status], 'mail': [self.mail_status_label]}.items():
             for widget in widgets: widget.setVisible(preferences.get('sections', {}).get(key, True))
@@ -161,7 +319,7 @@ class DashboardMixin:
             visible = QCheckBox(card.title())
             visible.setChecked(config.get('visible', True))
             detail = QComboBox()
-            for title, value in [('简洁 · 1 行', 'compact'), ('标准 · 3 行', 'normal'), ('详细 · 全部状态', 'detailed')]: detail.addItem(title, value)
+            for title, value in [('简洁 · 主要状态', 'compact'), ('标准 · 两项详情', 'normal'), ('详细 · 全部状态', 'detailed')]: detail.addItem(title, value)
             detail.setCurrentIndex(max(0, detail.findData(config.get('detail', 'detailed'))))
             color = button('选择颜色', lambda: None)
             color.setProperty('chosenColor', config.get('color', self.home_default_colors[page]))
@@ -419,7 +577,7 @@ class DashboardMixin:
             return
         self._mail_busy = True
         def done(message, success):
-            state = 'sent' if success else ('failed' if '登录失败' in message or '请填写' in message else 'unknown')
+            state = 'sent' if success else ('failed' if '登录失败' in message or '请填写' in message or message.startswith('未发送') else 'unknown')
             self.activity.mail_result(identity, booking['identifier'], state, redact(message, self.vault.secret_values()))
             self._mail_busy = False
             self.refresh_dashboard()
