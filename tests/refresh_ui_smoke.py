@@ -8,12 +8,13 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from PySide6.QtWidgets import QApplication
 from ucasdesk.ui import Window
+from tests.vault_fixture import isolated_keychain
 from ucasdesk.core import Store
 from ucasdesk.automation import Automation
 from ucasdesk.activity import scope
 
 app = QApplication([])
-with tempfile.TemporaryDirectory() as tmp:
+with isolated_keychain(), tempfile.TemporaryDirectory() as tmp:
     directory = Path(tmp)
     def engine(jobs, vault, parent):
         a = Automation(jobs, vault, parent, directory=directory); a.timer.stop(); return a

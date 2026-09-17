@@ -2,6 +2,13 @@
 
 本项目集成已有工作，并新增 Windows 界面、系统托盘、任务调度、凭据管理、结果校验和扩展接口。各上游项目的成果属于其原作者；本项目不声称原创这些学校接口、课表规划器或平台自动化方案。
 
+## 社区贡献者
+
+- [cuizixian0328](https://github.com/zhangzhendan-Berkeley/UCAS-Desktop/commit/010c2ed9e703)（Git 提交署名）：钥匙串、浏览器、字体、进程、安装说明、手机页面、测试适配及模块缺失提示修正。
+- [@zihenghe04](https://github.com/zihenghe04)（PR 提交账号）：[PR #1 — macOS 运行支持](https://github.com/zhangzhendan-Berkeley/UCAS-Desktop/pull/1)。
+
+原作者提交保留在 Git 历史中；提交署名未关联到可验证的 GitHub 用户时链接到具体提交，不推测其身份。后续集成修复不改变贡献归属。
+
 ## 直接采用与适配
 
 完整固定提交见 [`modules.json`](modules.json)，日期为 2026-09-16 核验时的快照，并非长期可用保证。

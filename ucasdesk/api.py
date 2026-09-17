@@ -31,8 +31,14 @@ class LocalAPI:
                 self.send_header('X-Content-Type-Options', 'nosniff')
                 self.send_header('Referrer-Policy', 'no-referrer')
                 self.send_header('X-Frame-Options', 'DENY')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.send_header('Access-Control-Allow-Headers', 'Authorization')
+                self.send_header('Access-Control-Allow-Methods', 'GET, OPTIONS')
                 self.end_headers()
                 self.wfile.write(data)
+
+            def do_OPTIONS(self):
+                self.send(b'', status=204)
 
             def do_GET(self):
                 path = urlsplit(self.path).path
@@ -41,6 +47,9 @@ class LocalAPI:
                     return
                 if path == '/mobile/manifest.webmanifest':
                     self.send((ROOT / 'mobile/manifest.webmanifest').read_bytes(), content_type='application/manifest+json')
+                    return
+                if path == '/mobile/connection.mjs':
+                    self.send((ROOT / 'mobile/connection.mjs').read_bytes(), content_type='text/javascript; charset=utf-8')
                     return
                 if path == '/v1/health':
                     from . import __version__

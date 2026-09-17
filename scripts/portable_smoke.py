@@ -46,11 +46,11 @@ print('Standalone OCR with bundled MSVC: PASS')
                     "import('./adapters/mooc_helpers.mjs').then(()=>console.log('mooc import: OK'))"], cwd=ROOT, check=True, env=child_env())
     os.environ['QT_QPA_PLATFORM'] = 'offscreen'
     from PySide6.QtWidgets import QApplication
-    from ucasdesk.ui import Window, STYLE, load_fonts
+    from ucasdesk.ui import Window, style_sheet, load_fonts
     app = QApplication([])
     app.setStyle('Fusion')
     load_fonts()
-    app.setStyleSheet(STYLE)
+    app.setStyleSheet(style_sheet())
     errors = []
     sys.excepthook = lambda kind, value, tb: errors.append(str(value))
     window = Window()

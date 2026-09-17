@@ -10,7 +10,9 @@ import re
 import secrets
 import shutil
 import sqlite3
+from contextlib import contextmanager
 import subprocess
+import sys
 from datetime import datetime
 from typing import Protocol
 
@@ -21,10 +23,14 @@ VENDOR = ROOT / 'vendor'
 PYTHON = ROOT / 'runtime/python/python.exe'
 if not PYTHON.is_file():
     PYTHON = ROOT / '.venv/Scripts/python.exe'
+if not PYTHON.is_file():
+    PYTHON = ROOT / '.venv/bin/python'
+if not PYTHON.is_file():
+    PYTHON = Path(sys.executable)
 # An explicit override or a system Node installation; no developer-machine paths.
 NODE = ROOT / 'runtime/node/node.exe'
 if not NODE.is_file():
-    NODE = Path(os.environ.get('UCAS_NODE') or shutil.which('node') or 'node.exe')
+    NODE = Path(os.environ.get('UCAS_NODE') or shutil.which('node') or 'node')
 for directory in (DATA, LOGS):
     directory.mkdir(exist_ok=True)
 
@@ -51,6 +57,45 @@ def redact(text: str, values=()) -> str:
     # Older adapters included the whole SEP profile card in error messages.
     text = re.sub(r'(?im)(\bbody=)[^\r\n]*', r'\1[页面正文已省略]', text)
     return re.sub(r'\x1b\[[0-9;]*m', '', text)
+
+
+def _keychain_get(key):
+    from .macos_keychain import get
+    return get(key)
+
+
+def _keychain_set(key, value):
+    from .macos_keychain import set
+    set(key, value)
+
+
+def _keychain_delete(key):
+    from .macos_keychain import delete
+    delete(key)
+
+
+def _child_options():
+    flag = getattr(subprocess, 'CREATE_NO_WINDOW', None)
+    return {'creationflags': flag} if os.name == 'nt' and flag is not None else {}
+
+
+KEY_INDEX = '__index'
+
+
+def _keychain_keys():
+    index = _keychain_get(KEY_INDEX)
+    if index is None: return []
+    keys = index.get('keys')
+    if not isinstance(keys, list) or any(not isinstance(k, str) or k == KEY_INDEX for k in keys):
+        raise RuntimeError('macOS 钥匙串账号索引格式不正确；原记录未修改。')
+    return list(dict.fromkeys(keys))
+
+
+def _keychain_remember(key, remember):
+    keys = [k for k in _keychain_keys() if k != key]
+    if remember:
+        keys.append(key)
+    _keychain_set(KEY_INDEX, {'keys': keys})
 
 
 class Blob(ctypes.Structure):
@@ -82,7 +127,20 @@ class Vault:
         self.path = DATA / 'accounts.dpapi'
         self.accounts = {}
         self.warning = ''
-        if self.path.exists():
+        if sys.platform == 'darwin':
+            try:
+                # Known profiles also recover accounts written before an index update failed.
+                for key in dict.fromkeys(_keychain_keys() + ['sep', 'iclass', 'email']):
+                    account = _keychain_get(key)
+                    if account is None: continue
+                    if not all(isinstance(account.get(k), str) for k in ('username', 'password')):
+                        raise RuntimeError('macOS 钥匙串账号格式不正确；原记录未修改。')
+                    self.accounts[key] = account
+            except RuntimeError as exc:
+                self.warning = str(exc)
+            if self.path.exists():
+                self.warning += ' 检测到 Windows 账号文件；macOS 无法读取，请重新输入账号。'
+        elif self.path.exists():
             try:
                 self.accounts = json.loads(protect(self.path.read_bytes(), decrypt=True))
             except Exception:
@@ -93,6 +151,15 @@ class Vault:
 
     def set(self, key, username, password, remember=True):
         account = {'username': username.strip(), 'password': password}
+        if sys.platform == 'darwin':
+            _keychain_keys()  # Fail before changing records if the keychain is locked/unreadable.
+            if remember:
+                _keychain_set(key, account)
+            else:
+                _keychain_delete(key)
+            _keychain_remember(key, remember)
+            self.accounts[key] = account
+            return
         stored = {}
         if self.path.exists():
             try:
@@ -119,8 +186,14 @@ class Store:
             db.execute('CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY, module TEXT, title TEXT, status TEXT, created TEXT, updated TEXT, log TEXT)')
             db.execute("UPDATE jobs SET status='interrupted' WHERE status IN ('running','stopping')")
 
+    @contextmanager
     def connect(self):
-        return sqlite3.connect(self.path, timeout=10)
+        db = sqlite3.connect(self.path, timeout=10)
+        try:
+            with db:
+                yield db
+        finally:
+            db.close()
 
     def create(self, module, title):
         job_id = secrets.token_hex(6)
@@ -148,14 +221,64 @@ class Connector(Protocol):
 
 
 def browser_path():
-    candidates = [
-        Path(os.environ.get('PROGRAMFILES(X86)', 'C:/Program Files (x86)')) / 'Microsoft/Edge/Application/msedge.exe',
-        Path(os.environ.get('PROGRAMFILES', 'C:/Program Files')) / 'Google/Chrome/Application/chrome.exe',
-    ]
+    if sys.platform == 'darwin':
+        candidates = [
+            Path('/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge'),
+            Path('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'),
+            Path.home() / 'Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+            Path.home() / 'Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+        ]
+    else:
+        candidates = [
+            Path(os.environ.get('PROGRAMFILES(X86)', 'C:/Program Files (x86)')) / 'Microsoft/Edge/Application/msedge.exe',
+            Path(os.environ.get('PROGRAMFILES', 'C:/Program Files')) / 'Microsoft/Edge/Application/msedge.exe',
+            Path(os.environ.get('LOCALAPPDATA', '')) / 'Microsoft/Edge/Application/msedge.exe',
+            Path(os.environ.get('PROGRAMFILES', 'C:/Program Files')) / 'Google/Chrome/Application/chrome.exe',
+            Path(os.environ.get('PROGRAMFILES(X86)', 'C:/Program Files (x86)')) / 'Google/Chrome/Application/chrome.exe',
+            Path(os.environ.get('LOCALAPPDATA', '')) / 'Google/Chrome/Application/chrome.exe',
+        ]
     for path in candidates:
         if path.is_file():
             return path
     raise RuntimeError('未找到 Edge 或 Chrome，请安装其中一种浏览器。')
+
+
+def browser_kind():
+    """'edge' when Microsoft Edge is installed, otherwise 'chrome'."""
+    return 'edge' if 'edge' in browser_path().name.lower() else 'chrome'
+
+
+def browser_label():
+    """Display name of the browser this machine will drive."""
+    return 'Microsoft Edge' if browser_kind() == 'edge' else 'Google Chrome'
+
+
+def browser_options(profile=None):
+    """Selenium options for the installed browser; callers add task-specific flags."""
+    from selenium import webdriver
+    options = webdriver.EdgeOptions() if browser_kind() == 'edge' else webdriver.ChromeOptions()
+    options.binary_location = str(browser_path())
+    options.add_argument('--no-first-run')
+    options.page_load_strategy = 'eager'
+    if profile:
+        options.add_argument('--user-data-dir=' + str(profile))
+    return options
+
+
+def driver_service(log_path, **kwargs):
+    """Selenium service for the installed browser. The console-hiding flag is Windows-only."""
+    from selenium.webdriver.chrome.service import Service as ChromeService
+    from selenium.webdriver.edge.service import Service as EdgeService
+    service = (EdgeService if browser_kind() == 'edge' else ChromeService)(log_output=str(log_path), **kwargs)
+    if os.name == 'nt':
+        service.creation_flags = 0x08000000
+    return service
+
+
+def browser_driver(options, service):
+    from selenium import webdriver
+    factory = webdriver.Edge if browser_kind() == 'edge' else webdriver.Chrome
+    return factory(options=options, service=service)
 
 
 def child_env(extra=None):
@@ -170,7 +293,7 @@ def child_env(extra=None):
 
 def git_output(args, cwd):
     return subprocess.check_output(['git', *args], cwd=str(cwd), timeout=60,
-                                   creationflags=subprocess.CREATE_NO_WINDOW, encoding='utf-8').strip()
+                                   encoding='utf-8', **_child_options()).strip()
 
 
 def check_updates():

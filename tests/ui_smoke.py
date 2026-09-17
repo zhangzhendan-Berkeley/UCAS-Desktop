@@ -7,13 +7,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from PySide6.QtWidgets import QApplication, QDialog, QTableWidget, QPushButton
 from PySide6.QtCore import QEventLoop, QTimer
 import json
-from ucasdesk.ui import Window, STYLE, load_fonts
+from ucasdesk.ui import Window, load_fonts, style_sheet
 from ucasdesk.core import ROOT, LOGS, PYTHON
+
+
+def preview(name):
+    """Keep regenerated screenshots out of tracked docs unless explicitly asked."""
+    target = ROOT / ('docs' if os.environ.get('UCAS_UPDATE_DOCS') == '1' else 'logs/previews') / name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    return str(target)
 
 app = QApplication([])
 app.setStyle('Fusion')
 load_fonts()
-app.setStyleSheet(STYLE)
+app.setStyleSheet(style_sheet())
 window = Window()
 window.resize(1380, 910)
 window.show()
@@ -31,13 +38,13 @@ def wait_until(predicate, timeout=10):
 
 try:
     app.processEvents()
-    window.grab().save(str(ROOT / 'docs/desktop-home.png'))
+    window.grab().save(preview('desktop-home.png'))
     window.nav.setCurrentRow(4)
     wait_until(lambda: window.planner is not None)
     assert len(window.planner.db.get_all_courses()) > 1000
     assert window.planner.campus_combo.currentData() == 'H'
     app.processEvents()
-    window.grab().save(str(ROOT / 'docs/desktop-planner.png'))
+    window.grab().save(preview('desktop-planner.png'))
     print('Planner courses:', len(window.planner.db.get_all_courses()))
     window.receive_output('fixture', json.dumps({'event': 'lecture.science-schedule', 'rows': [
         {'title': 'Fixture lecture', 'time': '2026-10-16 19:00-20:30', 'location': 'Room',

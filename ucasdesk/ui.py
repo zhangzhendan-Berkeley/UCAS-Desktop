@@ -1,6 +1,7 @@
 from __future__ import annotations
 from datetime import datetime
 import json
+import os
 from pathlib import Path
 import socket
 import sys
@@ -23,6 +24,25 @@ from .dashboard import DashboardMixin
 from .presentation import color_item, LogHighlighter, enable_copy
 
 STATUS = {'running': '运行中', 'stopping': '停止中', 'completed': '已结束', 'attention': '待处理：仍有未完成项', 'failed': '执行失败', 'stopped': '已停止', 'interrupted': '已中断'}
+UI_FONTS = {
+    'nt': ('Microsoft YaHei',),
+    'darwin': ('PingFang SC', 'Heiti SC', 'Hiragino Sans GB', 'Songti SC'),
+    'posix': ('Noto Sans CJK SC', 'Source Han Sans SC', 'WenQuanYi Micro Hei', 'DejaVu Sans'),
+}
+
+
+def ui_font_families():
+    """Preferred installed families for this platform, most preferred first."""
+    preferred = list(UI_FONTS['darwin' if sys.platform == 'darwin' else os.name])
+    if isinstance(QApplication.instance(), QApplication):
+        available = set(QFontDatabase.families())
+        installed = [name for name in preferred if name in available]
+        return installed or ['sans-serif']
+    return preferred
+
+
+def style_sheet():
+    return STYLE.replace('__UI_FONT_STACK__', ', '.join('"%s"' % name for name in ui_font_families()))
 
 
 def load_fonts():
@@ -30,7 +50,8 @@ def load_fonts():
         path = Path('C:/Windows/Fonts') / font
         if path.exists():
             QFontDatabase.addApplicationFont(str(path))
-    QApplication.setFont(QFont('Microsoft YaHei', 10))
+    families = ui_font_families()
+    QApplication.setFont(QFont(families[0], 10))
 
 
 class Signals(QObject):
@@ -134,7 +155,7 @@ class Window(DashboardMixin, QMainWindow):
         self.nav.setObjectName('navigation')
         self.nav.addItems(['概览', '课程与讲座签到', '人文讲座预约', '国科大在线', '选课规划', '自动选课', '任务与日志', '设置与更新', '个人信息'])
         side.addWidget(self.nav)
-        self.runtime_hint = label('本地运行 · v0.3.3\n关闭窗口后托盘运行\n右键托盘可退出程序', 'sideText')
+        self.runtime_hint = label('本地运行 · v0.4.0\n关闭窗口后托盘运行\n右键托盘可退出程序', 'sideText')
         side.addWidget(self.runtime_hint)
         horizontal.addWidget(sidebar)
         self.pages = QStackedWidget()
@@ -274,7 +295,7 @@ class Window(DashboardMixin, QMainWindow):
         password = QLineEdit(existing['password'])
         password.setEchoMode(QLineEdit.Password)
         password.setPlaceholderText('密码只在本机使用')
-        remember = QCheckBox('记住账号密码（使用当前 Windows 账户加密）')
+        remember = QCheckBox('记住账号密码（使用系统安全存储）')
         remember.setChecked(True)
         form.addRow('发件邮箱' if key == 'email' else '账号', user)
         form.addRow('授权码 / 专用密码' if key == 'email' else '密码', password)
@@ -296,7 +317,7 @@ class Window(DashboardMixin, QMainWindow):
         return self.vault.get(key).copy()
 
     def build_profile(self):
-        layout = self.page('个人信息', '账号由当前 Windows 用户加密保存在本机；课程、讲座、已选同步与自动选课共用。')
+        layout = self.page('个人信息', '账号由当前系统的安全存储保存在本机；课程、讲座、已选同步与自动选课共用。')
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         widget = QWidget()
@@ -1185,7 +1206,7 @@ class Window(DashboardMixin, QMainWindow):
 
 
 STYLE = '''
-* { font-family: "Microsoft YaHei", "Segoe UI"; font-size: 13px; }
+* { font-family: __UI_FONT_STACK__; font-size: 13px; }
 QMainWindow, QWidget { background: #f5f7f5; color: #203c35; }
 QWidget#sidebar, QWidget#sidebar QLabel { background: #173d35; color: #e7f2e8; }
 QLabel#brand { font-size: 31px; font-weight: 800; letter-spacing: 3px; }

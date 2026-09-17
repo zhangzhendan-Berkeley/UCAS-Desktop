@@ -1,10 +1,14 @@
+import os
 import tempfile
 import unittest
 from pathlib import Path
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
-from PySide6.QtCore import QCoreApplication
+
+os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+
+from PySide6.QtWidgets import QApplication
 from ucasdesk.automation import Automation, lecture_slot, next_lecture_slot
 from ucasdesk.sign_ledger import SignLedger
 from adapters.iclass_worker import daily_courses, main
@@ -33,7 +37,7 @@ class Vault:
 class AutomationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = QCoreApplication.instance() or QCoreApplication([])
+        cls.app = QApplication.instance() or QApplication([])
 
     def test_clock_alignment_grace_and_midnight(self):
         self.assertIsNone(lecture_slot(datetime(2026, 9, 16, 8, 0, 59), [8]))

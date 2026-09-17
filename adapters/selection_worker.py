@@ -10,9 +10,7 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'vendor/UCAS-COURSE-SELECTION-SCRIPT'))
-from selenium import webdriver
-from selenium.webdriver.edge.service import Service
-from ucasdesk.core import DATA
+from ucasdesk.core import DATA, browser_driver, browser_label, browser_options, driver_service
 from ucasdesk.sep import login_sep
 from ucasdesk.enrollment import account_hash
 import main as upstream
@@ -30,16 +28,11 @@ def run(config):
     codes = list(dict.fromkeys(config['codes']))
     if not codes or any(not re.fullmatch(r'[A-Za-z0-9-]{8,30}', c) for c in codes):
         raise ValueError('课程编码格式不正确，请从 SEP 复制完整编码。')
-    options = webdriver.EdgeOptions()
     if not config.get('username') or not config.get('password'):
         raise ValueError('请先在个人信息页保存 SEP 账号。')
-    options.add_argument('--user-data-dir=' + str(DATA / 'browser-selection' / account_hash(config['username'])[:16]))
-    options.add_argument('--no-first-run')
-    options.page_load_strategy = 'eager'
-    service = Service(log_output=str(ROOT / 'logs/edgedriver.log'))
-    service.creation_flags = 0x08000000
-    print('正在启动 Edge。首次使用可能需要下载匹配的驱动。', flush=True)
-    driver = webdriver.Edge(options=options, service=service)
+    options = browser_options(DATA / 'browser-selection' / account_hash(config['username'])[:16])
+    print('正在启动 ' + browser_label() + '。首次使用可能需要下载匹配的驱动。', flush=True)
+    driver = browser_driver(options, driver_service(ROOT / 'logs/selection-driver.log'))
     try:
         driver.set_page_load_timeout(30)
         login_sep(driver, config, open_courses=True, timeout=600)

@@ -1,5 +1,6 @@
 """Local catalog metadata shared by planning and enrollment previews."""
 import sqlite3
+from contextlib import closing
 
 # Stable category colors, shared by the catalog, shortlist and week calendar.
 PALETTE = {
@@ -31,7 +32,7 @@ class Catalog:
             self.by_code.setdefault(course.code, []).append(course)
         if not db.is_valid:
             return
-        with sqlite3.connect(db.db_path) as connection:
+        with closing(sqlite3.connect(db.db_path)) as connection:
             connection.row_factory = sqlite3.Row
             for row in connection.execute('SELECT * FROM courses'):
                 self.details[row['id']] = dict(row)

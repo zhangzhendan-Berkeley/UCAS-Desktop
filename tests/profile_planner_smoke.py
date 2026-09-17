@@ -11,15 +11,23 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from PySide6.QtCore import Qt, QEventLoop, QTimer
 from PySide6.QtWidgets import QApplication, QDialog, QTextBrowser, QMessageBox
-from ucasdesk.ui import Window, STYLE, load_fonts
+from ucasdesk.ui import Window, load_fonts, style_sheet
 from ucasdesk.automation import Automation
+from tests.vault_fixture import isolated_keychain
 from ucasdesk.core import ROOT, Vault, Store
+
+
+def preview(name):
+    """Keep regenerated screenshots out of tracked docs unless explicitly asked."""
+    target = ROOT / ('docs' if os.environ.get('UCAS_UPDATE_DOCS') == '1' else 'logs/previews') / name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    return str(target)
 
 app = QApplication([])
 load_fonts()
-app.setStyleSheet(STYLE)
+app.setStyleSheet(style_sheet())
 
-with tempfile.TemporaryDirectory() as tmp:
+with isolated_keychain(), tempfile.TemporaryDirectory() as tmp:
     directory = Path(tmp)
     planner = directory / 'planner'
     planner.mkdir()
@@ -47,7 +55,11 @@ with tempfile.TemporaryDirectory() as tmp:
                 password.setText('fixture-password')
                 password.editingFinished.emit()
                 assert Vault().get(key)['password'] == 'fixture-password'
-                assert b'fixture-password' not in (directory / 'accounts.dpapi').read_bytes()
+                if os.name == 'nt':
+                    assert b'fixture-password' not in (directory / 'accounts.dpapi').read_bytes()
+                else:
+                    leaked = [p.name for p in directory.rglob('*') if p.is_file() and b'fixture-password' in p.read_bytes()]
+                    assert not leaked, '密码以明文落盘：' + ', '.join(leaked)
             window.account_fields['sep'][1].setText('updated-password')
             window.save_profile('sep')
             assert Vault().get('sep')['password'] == 'updated-password'
@@ -146,20 +158,20 @@ with tempfile.TemporaryDirectory() as tmp:
             window.resize(1380, 910)
             window.show()
             app.processEvents()
-            window.grab().save(str(ROOT / 'docs/desktop-profile.png'))
+            window.grab().save(preview('desktop-profile.png'))
             window.nav.setCurrentRow(4)
             app.processEvents()
-            window.grab().save(str(ROOT / 'docs/desktop-enrollment.png'))
+            window.grab().save(preview('desktop-enrollment.png'))
             window.planner_tabs.setCurrentIndex(0)
             app.processEvents()
-            window.grab().save(str(ROOT / 'docs/desktop-catalog.png'))
+            window.grab().save(preview('desktop-catalog.png'))
             window.planner_tabs.setCurrentIndex(2)
             app.processEvents()
-            window.grab().save(str(ROOT / 'docs/desktop-week.png'))
+            window.grab().save(preview('desktop-week.png'))
             window.nav.setCurrentRow(5)
             window.refresh_selection_courses()
             app.processEvents()
-            window.grab().save(str(ROOT / 'docs/desktop-selection.png'))
+            window.grab().save(preview('desktop-selection.png'))
             print('Profile, enrollment, metadata, search, category colors, shortlist persistence, details and checked-only transfer: PASS')
         finally:
             window.request_exit()

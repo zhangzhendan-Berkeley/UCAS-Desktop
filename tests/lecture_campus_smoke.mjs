@@ -4,8 +4,9 @@ import { chromium } from '../vendor/ucas-humanity-lecture-bot/node_modules/playw
 import { extractLectureSnapshot } from '../vendor/ucas-humanity-lecture-bot/dist/src/lecture-page.js';
 import { registerLecture } from '../vendor/ucas-humanity-lecture-bot/dist/src/register.js';
 import { isYanqiLocation } from '../vendor/ucas-humanity-lecture-bot/dist/src/campus.js';
+import { browserChannel } from '../adapters/browser_channel.mjs';
 
-const browser = await chromium.launch({ channel: 'msedge', headless: true });
+const browser = await chromium.launch({ channel: browserChannel(), headless: true });
 try {
   const context = await browser.newContext();
   await context.route('**/*', route => route.abort());

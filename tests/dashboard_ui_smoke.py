@@ -9,16 +9,25 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QApplication, QCheckBox, QPushButton, QComboBox
-from ucasdesk.ui import Window, STYLE, load_fonts
+from ucasdesk.ui import Window, load_fonts, style_sheet
+from tests.vault_fixture import isolated_keychain
 from ucasdesk.core import Store, Vault, read_json
 from ucasdesk.automation import Automation
 from ucasdesk.activity import scope
 from ucasdesk.presentation import copy_table, log_state
 
+
+def preview(name):
+    """Keep regenerated screenshots out of tracked docs unless explicitly asked."""
+    target = Path(__file__).resolve().parents[1] / ('docs' if os.environ.get('UCAS_UPDATE_DOCS') == '1' else 'logs/previews') / name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    return str(target)
+
+
 app = QApplication([])
 load_fonts()
-app.setStyleSheet(STYLE)
-with tempfile.TemporaryDirectory() as tmp:
+app.setStyleSheet(style_sheet())
+with isolated_keychain(), tempfile.TemporaryDirectory() as tmp:
     directory = Path(tmp)
     def engine(jobs, vault, parent):
         value = Automation(jobs, vault, parent, directory=directory)
@@ -38,7 +47,11 @@ with tempfile.TemporaryDirectory() as tmp:
                 user.setText('fixture@mails.ucas.ac.cn' if key == 'email' else 'fixture-' + key)
                 password.setText('fixture-secret')
                 window.save_profile(key)
-            assert b'fixture-secret' not in (directory / 'accounts.dpapi').read_bytes()
+            if os.name == 'nt':
+                assert b'fixture-secret' not in (directory / 'accounts.dpapi').read_bytes()
+            else:
+                leaked = [p.name for p in directory.rglob('*') if p.is_file() and b'fixture-secret' in p.read_bytes()]
+                assert not leaked, '密码以明文落盘：' + ', '.join(leaked)
             iclass, sep = scope(window.vault, 'iclass'), scope(window.vault, 'sep')
             today = datetime.now().strftime('%Y-%m-%d')
             rows = [dict(id=str(1000000+i), courseName='测试课'+str(i), teacherName='老师', classBeginTime=today+' 08:30:00', classEndTime=today+' 10:10:00', signStatus=str(i)) for i in range(2)]
@@ -115,8 +128,7 @@ with tempfile.TemporaryDirectory() as tmp:
             window.show()
             window.resize(1450, 1200)
             app.processEvents()
-            target = Path(__file__).resolve().parents[1] / 'docs/desktop-dashboard.png'
-            window.grab().save(str(target))
+            window.grab().save(preview('desktop-dashboard.png'))
             assert not errors, errors
         finally:
             window.jobs.active.clear()

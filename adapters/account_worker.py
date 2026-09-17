@@ -2,9 +2,7 @@ import json
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from selenium import webdriver
-from selenium.webdriver.edge.service import Service
-from ucasdesk.core import LOGS, DATA
+from ucasdesk.core import LOGS, DATA, browser_driver, browser_options, driver_service
 from ucasdesk.enrollment import account_hash
 from ucasdesk.sep import login_sep, read_enrolled, InvalidCredentials
 
@@ -12,16 +10,11 @@ from ucasdesk.sep import login_sep, read_enrolled, InvalidCredentials
 def main(payload):
     driver = None
     try:
-        options = webdriver.EdgeOptions()
-        options.add_argument('--no-first-run')
-        options.page_load_strategy = 'eager'
+        profile = None
         if payload['action'] == 'courses':
             profile = DATA / 'browser-enrollment' / account_hash(payload['username'])[:16]
-            options.add_argument('--user-data-dir=' + str(profile))
-        service = Service(log_output=str(LOGS / 'account-driver.log'))
-        service.creation_flags = 0x08000000
         # Password checks are fresh; course sync may reuse its own account-isolated session.
-        driver = webdriver.Edge(options=options, service=service)
+        driver = browser_driver(browser_options(profile), driver_service(LOGS / 'account-driver.log'))
         driver.set_page_load_timeout(30)
         login_sep(driver, payload, open_courses=payload['action'] == 'courses')
         if payload['action'] == 'courses':

@@ -1,23 +1,19 @@
-"""Offline Edge DOM regression. All HTTP(S) browser requests are blocked."""
-import sys
+"""Offline SEP DOM regression for the installed browser. All HTTP(S) browser requests are blocked."""
 import os
+import sys
 from pathlib import Path
 from urllib.parse import quote
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from selenium import webdriver
-from selenium.webdriver.edge.service import Service
 from ucasdesk.sep import login_sep, read_enrolled, InvalidCredentials, SEP, COURSES
-from ucasdesk.core import child_env
+from ucasdesk.core import browser_driver, browser_options, child_env, driver_service
 
 for key in ('NO_PROXY', 'no_proxy'):
     os.environ[key] = child_env()[key]
 
-options = webdriver.EdgeOptions()
+options = browser_options()
 options.add_argument('--headless=new')
-options.add_argument('--no-first-run')
-service = Service(log_output='NUL')
-service.creation_flags = 0x08000000
-driver = webdriver.Edge(options=options, service=service)
+service = driver_service(os.devnull)
+driver = browser_driver(options, service)
 driver.set_page_load_timeout(20)
 driver.execute_cdp_cmd('Network.enable', {})
 driver.execute_cdp_cmd('Network.setBlockedURLs', {'urls': ['http://*', 'https://*']})

@@ -15,7 +15,7 @@ from ucasdesk.instance import InstanceServer, server_name
 
 app = QApplication([])
 ui.load_fonts()
-app.setStyleSheet(ui.STYLE)
+app.setStyleSheet(ui.style_sheet())
 assert QSystemTrayIcon.isSystemTrayAvailable(), 'This test needs a Windows desktop tray'
 errors = []
 sys.excepthook = lambda kind, value, tb: errors.append(str(value))
