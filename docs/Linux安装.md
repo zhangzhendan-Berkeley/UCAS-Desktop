@@ -6,7 +6,7 @@ Linux 支持来自维护者提供的 `UCAS-Desktop-linux-pr.tar.gz` 补丁，合
 
 - Python 3.10–3.12、Node.js 22+（建议 24 LTS，含 npm）、Git。
 - 桌面会话或能够显示窗口的远程桌面；Qt 界面、登录窗口及验证码需要图形显示。
-- Edge、Google Chrome 或 Chromium，支持 `/usr/bin/` 下的常见名称，包括 `microsoft-edge-stable`、`google-chrome-stable` 和 `chromium-browser`。
+- 优先使用 Google Chrome，其次 Chromium，最后 Edge；支持 `/usr/bin/` 下的常见名称，包括 `microsoft-edge-stable`、`google-chrome-stable` 和 `chromium-browser`。
 - 同一用户的 D-Bus 会话，以及已配置、可解锁的 Secret Service / KWallet。
 - 自动检查使用 Ubuntu 24.04 x64。维护者反馈已在服务器版系统运行；其他发行版、架构和 KDE 环境仍需单独验证。
 
@@ -58,9 +58,11 @@ GNOME 桌面通常使用 GNOME Keyring，可通过“密码和密钥”管理并
 
 此应用仍是桌面程序。纯 SSH 会话通常缺少显示环境、D-Bus 或密钥环；服务器需要配置远程桌面或等效环境，并在该会话启动。Xvfb 可用于离线检查，但不会自动解决验证码、登录授权或密钥环弹窗。
 
+定时计划使用运行进程的本地时区。服务器常设为 UTC，运行前请确认北京时间；可用 `TZ=Asia/Shanghai ./启动linux.sh` 只为本应用及其子进程设置时区，避免影响服务器上的其他服务。
+
 系统托盘可用时，关闭窗口隐藏到托盘；托盘不可用时，界面会提示关闭窗口将退出，此时可最小化保留运行。注销桌面、电脑睡眠或关闭应用后，任务不能继续执行。目前没有提供 systemd 服务安装或无桌面常驻服务。
 
-Linux 浏览器若安装在沙箱包中，需确认其可访问应用数据目录。若 Edge 启动日志提示 `SUID sandbox helper binary ... not configured correctly`，说明浏览器安装的沙箱辅助程序所有者或权限异常，请按浏览器发行包要求修复或重新安装。CI 已对预装 Edge 做此项修复；应用不会自动关闭浏览器沙箱。不要以 root 运行应用来处理浏览器权限问题。
+Linux 浏览器若安装在沙箱包中，需确认其可访问应用数据目录。若 Edge 启动日志提示 `SUID sandbox helper binary ... not configured correctly`，说明浏览器安装的沙箱辅助程序所有者或权限异常，请按浏览器发行包要求修复或重新安装。CI 验证使用 Chrome。预装 Edge 152 在该镜像修复权限后仍出现渲染进程超时，因此不据此宣称 Linux Edge 已完整验证；应用不会自动关闭浏览器沙箱。不要以 root 运行应用来处理浏览器权限问题。
 
 ## 验证
 

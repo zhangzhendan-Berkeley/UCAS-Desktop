@@ -238,7 +238,10 @@ def browser_path():
             Path.home() / 'Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
         ]
     elif sys.platform.startswith('linux'):
-        candidates = [Path('/usr/bin/microsoft-edge'), Path('/usr/bin/microsoft-edge-stable'), Path('/usr/bin/google-chrome'), Path('/usr/bin/google-chrome-stable'), Path('/usr/bin/chromium'), Path('/usr/bin/chromium-browser')]
+        # Prefer Chromium's native Linux distributions; Edge remains an option.
+        candidates = [Path('/usr/bin/google-chrome'), Path('/usr/bin/google-chrome-stable'),
+                      Path('/usr/bin/chromium'), Path('/usr/bin/chromium-browser'),
+                      Path('/usr/bin/microsoft-edge'), Path('/usr/bin/microsoft-edge-stable')]
     else:
         candidates = [
             Path(os.environ.get('PROGRAMFILES(X86)', 'C:/Program Files (x86)')) / 'Microsoft/Edge/Application/msedge.exe',
@@ -261,6 +264,8 @@ def browser_kind():
 
 def browser_label():
     """Display name of the browser this machine will drive."""
+    if 'chromium' in browser_path().name.lower():
+        return 'Chromium'
     return 'Microsoft Edge' if browser_kind() == 'edge' else 'Google Chrome'
 
 

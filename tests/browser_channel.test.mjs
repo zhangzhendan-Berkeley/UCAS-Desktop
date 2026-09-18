@@ -36,3 +36,7 @@ test('Linux stable browser names and Chromium use the detected executable', () =
     assert.deepEqual(browserLaunchOptions('linux', path => path === executablePath), {channel, executablePath});
   }
 });
+
+test('Linux prefers Chrome when Edge is also installed', () => {
+  assert.equal(browserLaunchOptions('linux', () => true).executablePath, '/usr/bin/google-chrome');
+});

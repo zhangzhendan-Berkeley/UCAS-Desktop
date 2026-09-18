@@ -15,9 +15,9 @@ export function candidates(platform = process.platform, env = process.env, home 
       ...roots.map(root => ['chrome', `${root}/Google/Chrome/Application/chrome.exe`])];
   }
   if (platform === 'linux') return [
-    ['msedge', '/usr/bin/microsoft-edge'], ['msedge', '/usr/bin/microsoft-edge-stable'],
     ['chrome', '/usr/bin/google-chrome'], ['chrome', '/usr/bin/google-chrome-stable'],
     ['chromium', '/usr/bin/chromium'], ['chromium', '/usr/bin/chromium-browser'],
+    ['msedge', '/usr/bin/microsoft-edge'], ['msedge', '/usr/bin/microsoft-edge-stable'],
   ];
   return [];
 }

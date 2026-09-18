@@ -76,6 +76,10 @@ class BackendSelectionTests(unittest.TestCase):
         self.assertIs(keyring.select_backend(chain),secure)
         self.assertIs(keyring.select_backend(wallet),wallet)
 
+    def test_linux_prefers_chrome_when_edge_is_also_installed(self):
+        with patch('ucasdesk.core.sys.platform','linux'), patch.object(Path,'is_file',return_value=True):
+            self.assertEqual(core.browser_path().name, 'google-chrome')
+
     def test_python_browser_paths_cover_linux_variants(self):
         paths=['/usr/bin/microsoft-edge','/usr/bin/microsoft-edge-stable','/usr/bin/google-chrome',
                '/usr/bin/google-chrome-stable','/usr/bin/chromium','/usr/bin/chromium-browser']
