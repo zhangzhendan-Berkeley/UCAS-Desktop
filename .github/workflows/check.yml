@@ -38,6 +38,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y gnome-keyring dbus-x11 fonts-noto-cjk libegl1 libopengl0 libxcb-cursor0 libxkbcommon-x11-0
+          # The runner's Edge image may lack the packaged sandbox helper mode.
+          # Repair this trusted, preinstalled binary; keep browser sandboxing enabled.
+          if [ -f /opt/microsoft/msedge/msedge-sandbox ]; then
+            sudo chown root:root /opt/microsoft/msedge/msedge-sandbox
+            sudo chmod 4755 /opt/microsoft/msedge/msedge-sandbox
+          fi
       - name: Install pinned modules
         run: python scripts/setup.py --with-external-modules
       - name: Python unit tests
