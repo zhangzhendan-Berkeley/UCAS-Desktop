@@ -56,4 +56,4 @@ python3.12 scripts/setup.py --with-external-modules
 
 贡献者在 PR 中报告了 Apple Silicon / Python 3.12 的本机运行结果。自动检查不登录真实学校账号、不报名、不选课、不签到，因此不能证明学校在线接口在每个账号下都可用。验证码、校园网络和上游页面变化仍需用户验证。
 
-当前支持 Windows 和 macOS；尚未提供 Linux 账号存储适配。
+Linux 已新增源码支持，安装要求与密钥环配置见 [Linux 安装指南](Linux安装.md)。

@@ -4,9 +4,9 @@ import { chromium } from '../vendor/ucas-humanity-lecture-bot/node_modules/playw
 import { establishLectureSession, isLecturePage } from '../vendor/ucas-humanity-lecture-bot/dist/src/login.js';
 import { readScienceSchedule } from '../vendor/ucas-humanity-lecture-bot/dist/src/portal.js';
 import { extractLectureSnapshot } from '../vendor/ucas-humanity-lecture-bot/dist/src/lecture-page.js';
-import { browserChannel } from '../adapters/browser_channel.mjs';
+import { browserLaunchOptions } from '../adapters/browser_channel.mjs';
 
-const browser = await chromium.launch({ channel: browserChannel(), headless: true });
+const browser = await chromium.launch({ ...browserLaunchOptions(), headless: true });
 const messages = [];
 const logger = { info: (event, data) => messages.push({ event, data }) };
 const ticket = 'a'.repeat(64);

@@ -18,6 +18,8 @@ jobs:
             python: .venv/Scripts/python.exe
           - os: macos-15
             python: .venv/bin/python
+          - os: ubuntu-24.04
+            python: .venv/bin/python
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
     defaults:
@@ -31,6 +33,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Linux desktop and keyring dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gnome-keyring dbus-x11 fonts-noto-cjk libegl1 libopengl0 libxcb-cursor0 libxkbcommon-x11-0
       - name: Install pinned modules
         run: python scripts/setup.py --with-external-modules
       - name: Python unit tests
@@ -56,6 +63,14 @@ jobs:
       - name: Native macOS Keychain test
         if: runner.os == 'macOS'
         run: ${{ matrix.python }} scripts/keychain_self_test.py
+      - name: Native Linux keyring test
+        if: runner.os == 'Linux'
+        run: |
+          dbus-run-session -- bash -euc '
+            export XDG_DATA_HOME="$(mktemp -d)"
+            printf "%s" "disposable-ci-keyring-password" | gnome-keyring-daemon --unlock --components=secrets
+            .venv/bin/python scripts/linux_keyring_self_test.py
+          '
       - uses: actions/upload-artifact@v4
         if: always()
         with:

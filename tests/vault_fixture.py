@@ -1,4 +1,4 @@
-"""UI fixtures must never read or overwrite a real macOS user's Keychain."""
+"""UI fixtures must never read or overwrite a real user's macOS/Linux keyring."""
 from contextlib import contextmanager
 from unittest.mock import patch
 

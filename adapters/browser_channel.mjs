@@ -14,7 +14,12 @@ export function candidates(platform = process.platform, env = process.env, home 
     return [...roots.map(root => ['msedge', `${root}/Microsoft/Edge/Application/msedge.exe`]),
       ...roots.map(root => ['chrome', `${root}/Google/Chrome/Application/chrome.exe`])];
   }
-  return [['msedge', '/usr/bin/microsoft-edge'], ['chrome', '/usr/bin/google-chrome']];
+  if (platform === 'linux') return [
+    ['msedge', '/usr/bin/microsoft-edge'], ['msedge', '/usr/bin/microsoft-edge-stable'],
+    ['chrome', '/usr/bin/google-chrome'], ['chrome', '/usr/bin/google-chrome-stable'],
+    ['chromium', '/usr/bin/chromium'], ['chromium', '/usr/bin/chromium-browser'],
+  ];
+  return [];
 }
 
 export function channels(platform = process.platform, exists = existsSync) {
@@ -27,7 +32,7 @@ export function browserChannel(platform = process.platform, exists = existsSync)
 
 export function browserLaunchOptions(platform = process.platform, exists = existsSync, env = process.env, home = homedir()) {
   const selected = candidates(platform, env, home).find(([, path]) => exists(path));
-  if (!selected) throw new Error('未找到 Edge 或 Google Chrome，请安装后重试。macOS 请将浏览器放入 Applications。');
+  if (!selected) throw new Error('未找到 Edge、Chrome 或 Linux Chromium，请安装后重试。macOS 请将浏览器放入 Applications。');
   return {channel: selected[0], executablePath: selected[1]};
 }
 
