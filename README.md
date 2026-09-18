@@ -18,6 +18,15 @@
 
 这是个人维护的非官方项目。默认校区为雁栖湖；功能依赖学校页面和接口，**本地测试通过不代表你的学校账号已验证成功**。首次使用请先查询、预览，再核对学校记录。仅在本人有权操作的账号及学校允许的场景使用。
 
+Linux 用户可从源码运行（需要 Python 3.10–3.12、Node.js 22+、Git，以及 Chrome/Chromium/Edge）：
+
+```bash
+python3.12 scripts/setup.py
+./启动linux.sh
+```
+
+Linux 账号通过系统 Secret Service/KWallet 使用 `keyring` 保存；请先配置桌面密钥环。Linux 暂不提供独立便携包。
+
 ![应用首页](docs/desktop-dashboard.png)
 
 ## v0.4.0：macOS 源码运行支持

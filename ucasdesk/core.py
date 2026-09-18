@@ -140,6 +140,15 @@ class Vault:
                 self.warning = str(exc)
             if self.path.exists():
                 self.warning += ' 检测到 Windows 账号文件；macOS 无法读取，请重新输入账号。'
+        elif sys.platform.startswith('linux'):
+            try:
+                import keyring
+                for key in ('sep', 'iclass', 'email'):
+                    value = keyring.get_password('UCAS-Desktop', key)
+                    if value:
+                        self.accounts[key] = json.loads(value)
+            except Exception as exc:
+                self.warning = f'无法访问 Linux 系统密钥环，请配置 Secret Service/KWallet（{type(exc).__name__}）。'
         elif self.path.exists():
             try:
                 self.accounts = json.loads(protect(self.path.read_bytes(), decrypt=True))
@@ -158,6 +167,15 @@ class Vault:
             else:
                 _keychain_delete(key)
             _keychain_remember(key, remember)
+            self.accounts[key] = account
+            return
+        if sys.platform.startswith('linux'):
+            import keyring
+            if remember:
+                keyring.set_password('UCAS-Desktop', key, json.dumps(account, ensure_ascii=False))
+            else:
+                try: keyring.delete_password('UCAS-Desktop', key)
+                except keyring.errors.PasswordDeleteError: pass
             self.accounts[key] = account
             return
         stored = {}
@@ -228,6 +246,8 @@ def browser_path():
             Path.home() / 'Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
             Path.home() / 'Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
         ]
+    elif sys.platform.startswith('linux'):
+        candidates = [Path('/usr/bin/microsoft-edge'), Path('/usr/bin/microsoft-edge-stable'), Path('/usr/bin/google-chrome'), Path('/usr/bin/google-chrome-stable'), Path('/usr/bin/chromium'), Path('/usr/bin/chromium-browser')]
     else:
         candidates = [
             Path(os.environ.get('PROGRAMFILES(X86)', 'C:/Program Files (x86)')) / 'Microsoft/Edge/Application/msedge.exe',
