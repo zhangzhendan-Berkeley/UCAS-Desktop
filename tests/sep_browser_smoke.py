@@ -12,8 +12,15 @@ for key in ('NO_PROXY', 'no_proxy'):
 
 options = browser_options()
 options.add_argument('--headless=new')
-service = driver_service(os.devnull)
-driver = browser_driver(options, service)
+log_path = Path(__file__).resolve().parents[1] / 'logs/previews/sep-webdriver.log'
+log_path.parent.mkdir(parents=True, exist_ok=True)
+service = driver_service(log_path, service_args=['--verbose'])
+try:
+    driver = browser_driver(options, service)
+except Exception:
+    if log_path.exists():
+        print(log_path.read_text(encoding='utf-8', errors='replace')[-9000:])
+    raise
 driver.set_page_load_timeout(20)
 driver.execute_cdp_cmd('Network.enable', {})
 driver.execute_cdp_cmd('Network.setBlockedURLs', {'urls': ['http://*', 'https://*']})

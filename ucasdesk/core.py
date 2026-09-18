@@ -60,17 +60,26 @@ def redact(text: str, values=()) -> str:
 
 
 def _keychain_get(key):
-    from .macos_keychain import get
+    if sys.platform.startswith('linux'):
+        from .linux_keyring import get
+    else:
+        from .macos_keychain import get
     return get(key)
 
 
 def _keychain_set(key, value):
-    from .macos_keychain import set
+    if sys.platform.startswith('linux'):
+        from .linux_keyring import set
+    else:
+        from .macos_keychain import set
     set(key, value)
 
 
 def _keychain_delete(key):
-    from .macos_keychain import delete
+    if sys.platform.startswith('linux'):
+        from .linux_keyring import delete
+    else:
+        from .macos_keychain import delete
     delete(key)
 
 
@@ -87,7 +96,7 @@ def _keychain_keys():
     if index is None: return []
     keys = index.get('keys')
     if not isinstance(keys, list) or any(not isinstance(k, str) or k == KEY_INDEX for k in keys):
-        raise RuntimeError('macOS 钥匙串账号索引格式不正确；原记录未修改。')
+        raise RuntimeError('系统密钥环账号索引格式不正确；原记录未修改。')
     return list(dict.fromkeys(keys))
 
 
@@ -127,19 +136,19 @@ class Vault:
         self.path = DATA / 'accounts.dpapi'
         self.accounts = {}
         self.warning = ''
-        if sys.platform == 'darwin':
+        if sys.platform == 'darwin' or sys.platform.startswith('linux'):
             try:
                 # Known profiles also recover accounts written before an index update failed.
                 for key in dict.fromkeys(_keychain_keys() + ['sep', 'iclass', 'email']):
                     account = _keychain_get(key)
                     if account is None: continue
                     if not all(isinstance(account.get(k), str) for k in ('username', 'password')):
-                        raise RuntimeError('macOS 钥匙串账号格式不正确；原记录未修改。')
+                        raise RuntimeError('系统密钥环账号格式不正确；原记录未修改。')
                     self.accounts[key] = account
             except RuntimeError as exc:
                 self.warning = str(exc)
             if self.path.exists():
-                self.warning += ' 检测到 Windows 账号文件；macOS 无法读取，请重新输入账号。'
+                self.warning += ' 检测到 Windows 账号文件；当前系统无法读取，请重新输入账号。'
         elif self.path.exists():
             try:
                 self.accounts = json.loads(protect(self.path.read_bytes(), decrypt=True))
@@ -151,7 +160,7 @@ class Vault:
 
     def set(self, key, username, password, remember=True):
         account = {'username': username.strip(), 'password': password}
-        if sys.platform == 'darwin':
+        if sys.platform == 'darwin' or sys.platform.startswith('linux'):
             _keychain_keys()  # Fail before changing records if the keychain is locked/unreadable.
             if remember:
                 _keychain_set(key, account)
@@ -228,6 +237,11 @@ def browser_path():
             Path.home() / 'Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
             Path.home() / 'Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
         ]
+    elif sys.platform.startswith('linux'):
+        # Prefer Chromium's native Linux distributions; Edge remains an option.
+        candidates = [Path('/usr/bin/google-chrome'), Path('/usr/bin/google-chrome-stable'),
+                      Path('/usr/bin/chromium'), Path('/usr/bin/chromium-browser'),
+                      Path('/usr/bin/microsoft-edge'), Path('/usr/bin/microsoft-edge-stable')]
     else:
         candidates = [
             Path(os.environ.get('PROGRAMFILES(X86)', 'C:/Program Files (x86)')) / 'Microsoft/Edge/Application/msedge.exe',
@@ -240,7 +254,7 @@ def browser_path():
     for path in candidates:
         if path.is_file():
             return path
-    raise RuntimeError('未找到 Edge 或 Chrome，请安装其中一种浏览器。')
+    raise RuntimeError('未找到 Edge、Chrome 或 Linux Chromium，请安装对应浏览器。')
 
 
 def browser_kind():
@@ -250,6 +264,8 @@ def browser_kind():
 
 def browser_label():
     """Display name of the browser this machine will drive."""
+    if 'chromium' in browser_path().name.lower():
+        return 'Chromium'
     return 'Microsoft Edge' if browser_kind() == 'edge' else 'Google Chrome'
 
 

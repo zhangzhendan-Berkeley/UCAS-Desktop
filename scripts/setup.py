@@ -1,4 +1,4 @@
-"""Reproducible Windows/macOS source setup; no accounts or school operations involved."""
+"""Reproducible Windows/macOS/Linux source setup; no accounts or school operations involved."""
 from __future__ import annotations
 import argparse
 import json
@@ -119,8 +119,8 @@ def main():
                         help='另行从原仓库获取未附独立 LICENSE 的人文预约与选课依赖；请先阅读 THIRD_PARTY.md')
     parser.add_argument('--check', action='store_true', help='只检查 Python/Git/Node/npm 环境')
     args = parser.parse_args()
-    if os.name != 'nt' and sys.platform != 'darwin':
-        raise RuntimeError('当前支持 Windows 和 macOS，尚未提供 Linux 账号存储。')
+    if os.name != "nt" and sys.platform != "darwin" and not sys.platform.startswith("linux"):
+        raise RuntimeError("当前支持 Windows、macOS 和 Linux。")
     if sys.version_info[:2] < (3, 10) or sys.version_info[:2] >= (3, 13):
         raise RuntimeError('需要 Python 3.10–3.12。')
     tool('git')
@@ -153,7 +153,8 @@ def main():
         run([python, ROOT / 'scripts/build_launcher.py'])
         print('安装完成。双击 UCAS桌面助手.exe 或 启动调试.cmd。学校功能需自行登录验证。')
     else:
-        print('安装完成。macOS 请运行：' + str(python) + ' app.py；学校功能需自行登录验证。')
+        launcher = '启动linux.sh' if sys.platform.startswith('linux') else '启动mac.sh'
+        print(f'安装完成。请运行：{launcher}；学校功能需自行登录验证。')
 
 
 if __name__ == '__main__':

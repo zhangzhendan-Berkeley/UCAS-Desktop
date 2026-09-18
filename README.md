@@ -2,7 +2,7 @@
 
 # UCAS 桌面助手
 
-面向国科大集中教学场景的 **Windows / macOS 桌面集成工具**：把轻新课堂签到、讲座预约、选课规划、选课自动化及国科大在线视频/文档任务放在同一界面，支持系统托盘后台运行。
+面向国科大集中教学场景的 **Windows / macOS / Linux 桌面集成工具**：把轻新课堂签到、讲座预约、选课规划、选课自动化及国科大在线视频/文档任务放在同一界面，支持系统托盘后台运行。
 
 ## 免安装便携版（推荐普通用户）
 
@@ -17,6 +17,15 @@
 下面的源码安装说明供开发者或需要自行修改的用户使用。
 
 这是个人维护的非官方项目。默认校区为雁栖湖；功能依赖学校页面和接口，**本地测试通过不代表你的学校账号已验证成功**。首次使用请先查询、预览，再核对学校记录。仅在本人有权操作的账号及学校允许的场景使用。
+
+Linux 支持已加入源码主分支（需要 Python 3.10–3.12、Node.js 22+、Git、图形会话，以及 Chrome/Chromium/Edge）。请先阅读 **[Linux 安装与运行](docs/Linux安装.md)**：
+
+```bash
+python3.12 scripts/setup.py
+./启动linux.sh
+```
+
+Linux 账号通过已解锁的 Secret Service / KWallet 系统密钥环保存；不回退到明文文件。无桌面的服务器需配置图形与 D-Bus 会话，不能直接当作纯命令行服务运行。Linux 暂不提供独立便携包；v0.4.0 发布标签不含这次更新，请使用主分支源码。
 
 ![应用首页](docs/desktop-dashboard.png)
 
@@ -77,7 +86,7 @@
 
 ## 安装
 
-macOS 用户请直接阅读 [macOS 安装指南](docs/macOS安装.md)；以下为 Windows 源码安装步骤。
+macOS 用户请阅读 [macOS 安装指南](docs/macOS安装.md)，Linux 用户请阅读 [Linux 安装指南](docs/Linux安装.md)；以下为 Windows 源码安装步骤。
 
 ### 1. 环境要求
 
@@ -229,7 +238,7 @@ EXE 是小型启动器，**不是独立免安装包**。必须保留整个工程
 
 后台需要人工登录验证时该轮失败并记录，下一时点再尝试；先停用计划，用可见浏览器的预览完成验证，再启用。出现报名结果不明或提交过程意外退出时，后续轮次保持只读观察，不重复报名；核对学校实际记录后，停止讲座任务，点击 **核对后解除报名暂停**，再保存启用计划。
 
-数据仅保存在本机：`data/automation.json` 为不含密码的计划，`data/automation-state.json` 为触发记录，`data/sign-ledger.sqlite3` 为签到提交记录，`data/lecture/<账号哈希>/observations.json` 与 `发布时间观察.md` 为观察数据。账号使用 Windows DPAPI 或 macOS 钥匙串保存，以上数据和日志均不提交到 GitHub。
+数据仅保存在本机：`data/automation.json` 为不含密码的计划，`data/automation-state.json` 为触发记录，`data/sign-ledger.sqlite3` 为签到提交记录，`data/lecture/<账号哈希>/observations.json` 与 `发布时间观察.md` 为观察数据。账号使用 Windows DPAPI、macOS 钥匙串或 Linux 系统密钥环保存，以上数据和日志均不提交到 GitHub。
 
 ### 4. 国科大在线视频/文档
 
@@ -303,7 +312,7 @@ EXE 是小型启动器，**不是独立免安装包**。必须保留整个工程
 
 - 密码在本机界面填写，不需要提交给仓库维护者。
 - 轻新课堂固定学校接口默认直连，避免无关的 HTTP 代理导致超时，TLS 校验仍开启。确需 HTTP 代理时可在启动前设置 `UCAS_ICLASS_USE_PROXY=1`。
-- SEP 与轻新课堂账号统一在 **个人信息** 页维护，使用 Windows DPAPI 或 macOS 钥匙串保存；填写完整后离开输入框会自动保存，也可点击“保存账号”。重新打开自动读取，旧的已加密账号直接沿用。
+- SEP 与轻新课堂账号统一在 **个人信息** 页维护，使用 Windows DPAPI、macOS 钥匙串或 Linux 系统密钥环保存；填写完整后离开输入框会自动保存，也可点击“保存账号”。重新打开自动读取，旧的已加密账号直接沿用。
 - `data/accounts.dpapi` 绑定当前 Windows 用户；浏览器会话另存在 `data/browser-*` 和 `data/lecture/`，不等同于 DPAPI 加密账号文件。
 - 任务状态、计划、设置在 `data/`；日志在 `logs/`。这两个目录已加入 `.gitignore`。
 - 日志按已知账号、密码及常见令牌脱敏；提交 Issue 前仍需检查截图和文本，删除学号、姓名、课程私人链接及会话信息。
@@ -369,7 +378,7 @@ npm --prefix vendor/ucas-humanity-lecture-bot test
 node tests/lecture_portal_smoke.mjs
 ```
 
-初始本地验证包括 9 项 Python 核心测试、24 项讲座测试、课表与四种导出、浏览器启动、任务停止、关闭/最小化继续运行及跨进程唤醒。CI 在 Windows / macOS 运行依赖安装、离线核心、界面、浏览器及任务停止检查，Mac 另验证原生钥匙串，**不携带学校账号、不验证真实业务、不代表所有模块端到端可用**。详见 [验证记录](docs/项目筛选与验证.md)。
+初始本地验证包括 9 项 Python 核心测试、24 项讲座测试、课表与四种导出、浏览器启动、任务停止、关闭/最小化继续运行及跨进程唤醒。CI 在 Windows / macOS / Ubuntu 运行依赖安装、离线核心、界面、浏览器及任务停止检查，Mac / Linux 另验证系统密钥环，**不携带学校账号、不验证真实业务、不代表所有模块端到端可用**。详见 [验证记录](docs/项目筛选与验证.md)。
 
 ### 更新与扩展
 

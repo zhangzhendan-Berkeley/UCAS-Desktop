@@ -28,3 +28,15 @@ test('launch uses actual executable, including per-user installs; missing browse
   assert.equal(browserLaunchOptions('win32',p=>p.startsWith('D:/Apps'),{PROGRAMFILES:'D:/Apps'}).channel,'msedge');
   assert.throws(()=>browserLaunchOptions('darwin',()=>false),/未找到/);
 });
+
+
+test('Linux stable browser names and Chromium use the detected executable', () => {
+  for (const [name, channel] of [['microsoft-edge-stable','msedge'],['google-chrome-stable','chrome'],['chromium','chromium'],['chromium-browser','chromium']]) {
+    const executablePath = '/usr/bin/' + name;
+    assert.deepEqual(browserLaunchOptions('linux', path => path === executablePath), {channel, executablePath});
+  }
+});
+
+test('Linux prefers Chrome when Edge is also installed', () => {
+  assert.equal(browserLaunchOptions('linux', () => true).executablePath, '/usr/bin/google-chrome');
+});
