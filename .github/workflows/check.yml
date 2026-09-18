@@ -54,6 +54,14 @@ jobs:
           for file in automation_ui_smoke profile_planner_smoke dashboard_ui_smoke refresh_ui_smoke macos_jobs_smoke; do
             ${{ matrix.python }} tests/$file.py
           done
+      - name: Native Linux keyring test
+        if: runner.os == 'Linux'
+        run: |
+          dbus-run-session -- bash -euc '
+            export XDG_DATA_HOME="$(mktemp -d)"
+            printf "%s" "disposable-ci-keyring-password" | gnome-keyring-daemon --unlock --components=secrets
+            .venv/bin/python scripts/linux_keyring_self_test.py
+          '
       - name: Offline browser tests
         run: |
           ${{ matrix.python }} tests/sep_browser_smoke.py
@@ -63,14 +71,6 @@ jobs:
       - name: Native macOS Keychain test
         if: runner.os == 'macOS'
         run: ${{ matrix.python }} scripts/keychain_self_test.py
-      - name: Native Linux keyring test
-        if: runner.os == 'Linux'
-        run: |
-          dbus-run-session -- bash -euc '
-            export XDG_DATA_HOME="$(mktemp -d)"
-            printf "%s" "disposable-ci-keyring-password" | gnome-keyring-daemon --unlock --components=secrets
-            .venv/bin/python scripts/linux_keyring_self_test.py
-          '
       - uses: actions/upload-artifact@v4
         if: always()
         with:
