@@ -20,7 +20,7 @@ def logged_in(url):
     return p.hostname == 'sep.ucas.ac.cn' and p.path.rstrip('/') in ('/sepCard/card', '/appStore', '/appStore/appIndex')
 
 
-def login_sep(driver, account, open_courses=False, timeout=180):
+def login_sep(driver, account, open_courses=False, timeout=600):
     driver.get(SEP)
     wait = WebDriverWait(driver, 20)
     if not logged_in(driver.current_url):
@@ -28,14 +28,18 @@ def login_sep(driver, account, open_courses=False, timeout=180):
         user.clear(); user.send_keys(account['username'])
         password = driver.find_element(By.ID, 'pwd1')
         password.clear(); password.send_keys(account['password'])
-        driver.find_element(By.ID, 'sb1').click()
-        print('已填入个人信息页中的 SEP 账号；如出现验证码/邮箱验证，请在浏览器完成。', flush=True)
+        captcha = driver.find_elements(By.CSS_SELECTOR, "input#certCode1:not([type=hidden]),input[name=certCode1]:not([type=hidden]),input#certCode:not([type=hidden])")
+        if any(element.is_displayed() for element in captcha):
+            print('SEP 需要验证码：已填入账号密码，请在浏览器输入验证码并点击登录，完成后自动继续，最多等待 10 分钟。', flush=True)
+        else:
+            driver.find_element(By.ID, 'sb1').click()
+            print('已填入个人信息页中的 SEP 账号；如出现验证码/邮箱验证，请在浏览器完成，最多等待 10 分钟。', flush=True)
         deadline = time.monotonic() + timeout
         while not logged_in(driver.current_url):
             # Inspect only explicit error widgets. Never log portal body/profile data.
             messages = driver.execute_script("""return [...document.querySelectorAll('#loginError,#messageBoxError,.alert-danger,.alert-error,.error')]
                 .filter(e=>e.getClientRects().length).map(e=>e.textContent).join(' ');""")
-            if re.search(r'(用户名|账号|用户|密码).{0,12}(错误|不正确|不存在)|认证失败|无效的(用户|密码)', messages or ''):
+            if re.search(r'(用户名|账号|用户|密码).{0,12}(错误|不正确|不存在)|无效的(用户|密码)', messages or '') and not re.search(r'验证码|校验码|邮箱验证|安全验证', messages or ''):
                 raise InvalidCredentials('SEP 提示账号或密码不正确，请在个人信息页修改。')
             if time.monotonic() > deadline:
                 raise RuntimeError('SEP 登录未完成，可能需要验证码或邮箱验证；未判定密码正确。')

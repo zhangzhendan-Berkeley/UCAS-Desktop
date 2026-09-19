@@ -1,0 +1,120 @@
+diff --git a/src/captcha.ts b/src/captcha.ts
+--- a/src/captcha.ts
++++ b/src/captcha.ts
+@@ -1,7 +1,8 @@
+ import { execFile } from "node:child_process";
+ import { constants } from "node:fs";
+ import { access, mkdir, writeFile } from "node:fs/promises";
+-import { join, resolve } from "node:path";
++import { basename, dirname, join, resolve } from "node:path";
++import { fileURLToPath } from "node:url";
+ import { promisify } from "node:util";
+ import type { Page } from "playwright";
+ import { Logger } from "./log.js";
+@@ -12,8 +13,11 @@
+   "input#certCode1:not([type='hidden']), input[name='certCode1']:not([type='hidden']), input#certCode:not([type='hidden']), input[name='certCode']:not([type='hidden'])";
+ const captchaImageSelector =
+   "img#code, img[src*='changePic'], img[alt*='验证码'], img[title*='验证码']";
+-const captchaSampleDir = resolve(".cache/captcha");
+-const solverScriptPath = resolve("scripts/solve-captcha.py");
++// Support compiled dist/src and direct src imports, independent of the app cwd.
++const moduleDir = dirname(fileURLToPath(import.meta.url));
++const packageDir = resolve(moduleDir, basename(dirname(moduleDir)) === "dist" ? "../.." : "..");
++const captchaSampleDir = join(packageDir, ".cache", "captcha");
++const solverScriptPath = join(packageDir, "scripts", "solve-captcha.py");
+ const execFileAsync = promisify(execFile);
+ const expectedCaptchaLength = 4;
+ 
+@@ -44,8 +48,7 @@
+ 
+   logger.info("captcha.solved", {
+     engine: "ddddocr",
+-    rawText: normalizeWhitespace(rawText),
+-    solvedText,
++    length: solvedText.length,
+     sampleBaseName: sample.sampleBaseName
+   });
+ 
+@@ -111,7 +114,7 @@
+   const { stdout, stderr } = await execFileAsync(
+     config.pythonExecutable,
+     [solverScriptPath, imagePath],
+-    { encoding: "utf8" }
++    { encoding: "utf8", windowsHide: true, timeout: 60000 }
+   );
+   const parsed = JSON.parse(stdout) as Array<{ image?: string; text?: string }>;
+   const rawText = parsed[0]?.text ?? "";
+diff --git a/src/login.ts b/src/login.ts
+--- a/src/login.ts
++++ b/src/login.ts
+@@ -30,19 +30,20 @@
+   for (let attempt = 1; attempt <= config.captcha.maxAttempts; attempt += 1) {
+     await openLoginPageIfNeeded(page, config);
+     if (await isLoginPage(page)) {
+-      await fillLoginForm(page, config, logger, attempt);
+-      await submitLogin(page);
++      if (await fillLoginForm(page, config, logger, attempt)) await submitLogin(page);
+       await page.waitForTimeout(1500);
+       await handleManualVerificationIfNeeded(page, config, logger);
+ 
+       if (await isLoginPage(page)) {
+         logger.warn("auth.login-still-open", { attempt, reason: "login-form-still-visible" });
+ 
+-        if (await captchaIsVisible(page)) {
+-          await refreshCaptcha(page, logger);
++        if (await captchaIsVisible(page) && attempt === config.captcha.maxAttempts) {
++          await waitForManualCaptchaLogin(page, config, logger);
++          await handleManualVerificationIfNeeded(page, config, logger);
++        } else {
++          if (await captchaIsVisible(page)) await refreshCaptcha(page, logger);
++          continue;
+         }
+-
+-        continue;
+       }
+     } else {
+       logger.info("auth.sep-session-reused", { attempt, url: safeLocation(page.url()) });
+@@ -75,19 +76,36 @@
+   config: AppConfig,
+   logger: Logger,
+   attempt: number
+-): Promise<void> {
++): Promise<boolean> {
+   await page.locator("#userName1").fill(config.username);
+   await page.locator("#pwd1").fill(config.password);
+   logger.info("auth.form-filled", { attempt });
+ 
+   if (await captchaIsVisible(page)) {
+-    if (!config.captcha.enabled) {
+-      throw new Error("登录页出现验证码，但当前配置禁用了验证码识别");
+-    }
+-
+     logger.info("captcha.detected", { attempt });
+-    await solveCaptcha(page, config.captcha, logger);
+-  }
++    try {
++      if (!config.captcha.enabled) throw new Error("OCR disabled");
++      await solveCaptcha(page, config.captcha, logger);
++    } catch {
++      await waitForManualCaptchaLogin(page, config, logger);
++      return false; // The user already submitted; do not click another page's button.
++    }
++  }
++  return true;
++}
++
++async function waitForManualCaptchaLogin(page: Page, config: AppConfig, logger: Logger): Promise<void> {
++  if (config.headless) throw new Error("验证码需要人工完成，请关闭无头模式后重试；未判定密码错误。");
++  await page.bringToFront();
++  logger.warn("auth.manual-captcha-required", { timeoutMs: manualVerificationWaitMs });
++  console.log("验证码自动识别未完成，请在已打开的 SEP 浏览器中填写验证码并点击登录；最多等待 10 分钟，完成后自动继续查询。");
++  const deadline = Date.now() + manualVerificationWaitMs;
++  while (Date.now() < deadline) {
++    if (page.isClosed()) throw new Error("验证窗口已关闭，请重新刷新并完成登录。");
++    if (!(await isLoginPage(page))) return;
++    await page.waitForTimeout(500);
++  }
++  throw new Error("等待验证码登录超时，请重新刷新后完成验证；未判定密码错误。");
+ }
+ 
+ async function submitLogin(page: Page): Promise<void> {

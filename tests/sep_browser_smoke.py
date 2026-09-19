@@ -49,6 +49,17 @@ try:
         raise AssertionError('Wrong password must not pass')
     except InvalidCredentials:
         assert driver.execute_script('return window.submits') == 1
+    class CaptchaFixture(Fixture):
+        def get(self, url):
+            assert url == SEP
+            driver.get('data:text/html;charset=utf-8,' + quote('''<script>
+              window.fixtureRoute='https://sep.ucas.ac.cn/';window.submits=0;
+              setTimeout(()=>{window.fixtureRoute='https://sep.ucas.ac.cn/sepCard/card'},1500);
+              </script><input id="userName1"><input id="pwd1" type="password"><input id="certCode1">
+              <div id="loginError">认证失败，验证码不正确</div>
+              <button id="sb1" onclick="window.submits++">登录</button>'''))
+    login_sep(CaptchaFixture(), {'username':'fixture-user','password':'fixture-secret'})
+    assert driver.execute_script('return window.submits') == 0, 'Do not submit empty CAPTCHA or reject password on CAPTCHA error'
     driver.get('data:text/html;charset=utf-8,' + quote(f"""<script>window.fixtureRoute={COURSES!r}</script>
       <table><thead><tr><th>课程编码</th><th>课程名称</th></tr></thead>
       <tbody><tr><td>180086081200P1001H</td><td>离线课程</td></tr></tbody></table>"""))

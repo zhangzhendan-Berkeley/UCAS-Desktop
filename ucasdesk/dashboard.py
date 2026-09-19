@@ -267,7 +267,16 @@ class DashboardMixin:
 
     def refresh_receive_event(self, job_id, event):
         batch = getattr(self, '_overview_refresh', None)
-        if not batch or job_id != batch.lecture_job or event.get('event') != 'dashboard.part': return
+        if not batch or job_id != batch.lecture_job: return
+        if event.get('event') in ('auth.manual-captcha-required', 'auth.manual-verification-required'):
+            for part in LECTURE_PARTS:
+                if batch.parts[part][0] == 'pending':
+                    batch.parts[part] = ('pending', '请在已打开的 SEP 浏览器完成验证码/邮箱验证；完成后自动继续')
+            self.refresh_all_status.setVisible(True)
+            self.refresh_details_button.setText('收起刷新明细')
+            self.update_refresh_progress(batch)
+            return
+        if event.get('event') != 'dashboard.part': return
         part = event.get('part')
         if part not in LECTURE_PARTS or batch.parts[part][0] != 'pending': return
         try:
@@ -277,7 +286,7 @@ class DashboardMixin:
             if part in ('humanity', 'science'):
                 if not isinstance(value.get('rows'), list): raise ValueError('讲座列表格式不正确')
                 self.activity.snapshot(batch.account, 'calendar-' + part, value)
-                detail = f'当前列表 {len(value["rows"])} 场'
+                detail = f'今天及之后 {len(value["rows"])} 场 · 已读取 {value.get("pages", 1)} 页'
                 if part == 'science':
                     self.science_rows = value['rows']
                     self.science_choose.setEnabled(bool(self.science_rows))

@@ -3,7 +3,7 @@ import { browserLaunchOptions } from './browser_channel.mjs';
 import { chromium } from '../vendor/ucas-humanity-lecture-bot/node_modules/playwright/index.mjs';
 import { existsSync } from 'node:fs';
 import { ensureAuthenticated } from '../vendor/ucas-humanity-lecture-bot/dist/src/login.js';
-import { readScienceSchedule } from '../vendor/ucas-humanity-lecture-bot/dist/src/portal.js';
+import { readUpcomingSchedule } from './lecture_pagination.mjs';
 import { parseAttendance } from './lecture_records.mjs';
 
 export const dashboardParts = ['humanity', 'science', 'humanity-attendance', 'science-attendance'];
@@ -11,6 +11,7 @@ export const dashboardParts = ['humanity', 'science', 'humanity-attendance', 'sc
 export async function queryDashboard(config, logger) {
   const browser = await chromium.launch({ ...browserLaunchOptions(), headless: config.headless });
   let failed = false;
+  let authenticationFailure = null;
   try {
     const state = process.env.UCAS_STORAGE_STATE;
     const context = await browser.newContext({ storageState: state && existsSync(state) ? state : undefined });
@@ -18,9 +19,11 @@ export async function queryDashboard(config, logger) {
     page.setDefaultNavigationTimeout(30000);
     for (const part of dashboardParts) {
       try {
+        if (authenticationFailure) throw new Error('SEP 会话未建立，后续查询已暂停：' + authenticationFailure);
         const science = part.startsWith('science');
         const url = 'https://xkcts.ucas.ac.cn:8443/subject/' + (science ? 'lecture' : 'humanityLecture');
-        await ensureAuthenticated(page, { ...config, humanityLectureUrl: url }, logger);
+        try { await ensureAuthenticated(page, { ...config, humanityLectureUrl: url }, logger); }
+        catch (error) { authenticationFailure = error.message; throw error; }
         let value;
         if (part.endsWith('attendance')) {
           const path = science ? 'student' : 'humanityStudent';
@@ -29,7 +32,7 @@ export async function queryDashboard(config, logger) {
           if (new URL(page.url()).pathname !== '/subject/' + path) throw new Error('讲座记录会话失效，请重新登录。');
           value = {...parseAttendance(await page.locator('body').innerText()), url:page.url()};
         } else {
-          value = {rows: await readScienceSchedule(page), scope:'current-page'};
+          value = await readUpcomingSchedule(page, logger);
         }
         console.log(JSON.stringify({event:'dashboard.part', part, ok:true, value}));
       } catch (error) {

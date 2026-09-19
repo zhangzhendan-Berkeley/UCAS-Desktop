@@ -71,6 +71,8 @@ jobs:
           fi
           node tests/lecture_portal_smoke.mjs
           node tests/lecture_campus_smoke.mjs
+          node tests/lecture_pagination_smoke.mjs
+          node tests/lecture_captcha_smoke.mjs
           ${{ matrix.python }} tests/lecture_patch_smoke.py
       - name: Native macOS Keychain test
         if: runner.os == 'macOS'
