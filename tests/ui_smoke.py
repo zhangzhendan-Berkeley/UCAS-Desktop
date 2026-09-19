@@ -46,21 +46,9 @@ try:
     app.processEvents()
     window.grab().save(preview('desktop-planner.png'))
     print('Planner courses:', len(window.planner.db.get_all_courses()))
-    window.receive_output('fixture', json.dumps({'event': 'lecture.science-schedule', 'rows': [
-        {'title': 'Fixture lecture', 'time': '2026-10-16 19:00-20:30', 'location': 'Room',
-         'start': '2026-10-16 19:00:00', 'end': '2026-10-16 20:30:00'}]}) + '\n')
-    assert window.science_choose.isEnabled()
-    window.lecture_id.setText('7654321')
-    def select_fixture():
-        dialog = window.findChild(QDialog)
-        dialog.findChild(QTableWidget).selectRow(0)
-        next(b for b in dialog.findChildren(QPushButton) if b.text() == '填入选中场次时间').click()
-    QTimer.singleShot(50, select_fixture)
-    window.choose_science_lecture()
-    assert window.lecture_start.dateTime().toString('yyyy-MM-dd HH:mm:ss') == '2026-10-16 19:00:00'
-    assert window.lecture_end.dateTime().toString('yyyy-MM-dd HH:mm:ss') == '2026-10-16 20:30:00'
-    assert window.lecture_id.text() == '', 'Never carry a previous lecture QR into a new selected event'
-    assert window.science_match.isEnabled()
+    window.nav.setCurrentRow(9)
+    assert window.nav.currentItem().text() == '今日讲座'
+    assert not hasattr(window, 'lecture_id')
     job = window.jobs.start('offline-test', '离线验证：中文输出', PYTHON, ['-c', 'print("中文输出验证")'])
     created.append(job)
     window.nav.setCurrentRow(6)

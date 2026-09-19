@@ -37,7 +37,7 @@ export async function collectSchedule(read, advance, {today=beijingDate(), maxPa
   throw new Error('无效的讲座翻页上限。');
 }
 
-async function paginationState(page) {
+export async function paginationState(page) {
   return page.evaluate(() => {
     const roots=[...document.querySelectorAll('.pagination,.pager')].filter(e=>e.getClientRects().length);
     const controls=roots.flatMap(e=>[...e.querySelectorAll('a,button,input[type=button]')]);

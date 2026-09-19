@@ -15,12 +15,13 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
 
 from .core import ROOT, DATA, LOGS, VENDOR, PYTHON, NODE, Vault, Store, read_json, write_json, redact, check_updates, stage_updates
 from .jobs import Jobs
-from .iclass import IClass, course_id, match_lecture_course
+from .iclass import IClass
 from .api import LocalAPI
 from .automation import Automation
 from .enrollment import Enrollment, account_hash
 from .activity import Activity, NOTICE_TYPES, NOTICE_DEFAULTS
 from .dashboard import DashboardMixin
+from .lectures import LecturesMixin
 from .presentation import color_item, LogHighlighter, enable_copy
 
 STATUS = {'running': '运行中', 'stopping': '停止中', 'completed': '已结束', 'attention': '待处理：仍有未完成项', 'failed': '执行失败', 'stopped': '已停止', 'interrupted': '已中断'}
@@ -111,7 +112,7 @@ def table(headers):
     return widget
 
 
-class Window(DashboardMixin, QMainWindow):
+class Window(LecturesMixin, DashboardMixin, QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle('UCAS 桌面助手 · 雁栖湖')
@@ -153,7 +154,7 @@ class Window(DashboardMixin, QMainWindow):
         side.addSpacing(28)
         self.nav = QListWidget()
         self.nav.setObjectName('navigation')
-        self.nav.addItems(['概览', '课程与讲座签到', '人文讲座预约', '国科大在线', '选课规划', '自动选课', '任务与日志', '设置与更新', '个人信息'])
+        self.nav.addItems(['概览', '课程签到', '人文讲座预约', '国科大在线', '选课规划', '自动选课', '任务与日志', '设置与更新', '个人信息', '今日讲座'])
         side.addWidget(self.nav)
         self.runtime_hint = label('本地运行 · v0.4.0\n关闭窗口后托盘运行\n右键托盘可退出程序', 'sideText')
         side.addWidget(self.runtime_hint)
@@ -170,6 +171,7 @@ class Window(DashboardMixin, QMainWindow):
         self.build_jobs()
         self.build_settings()
         self.build_profile()
+        self.build_today_lectures()
         enable_copy(self)
         self.nav.currentRowChanged.connect(self.navigate)
         self.nav.setCurrentRow(0)
@@ -407,7 +409,7 @@ class Window(DashboardMixin, QMainWindow):
             self.error(str(exc))
 
     def build_iclass(self):
-        layout = self.page('课程与讲座签到', '轻新课堂。可手动选择排课，或每天 08:00 自动安排当天全部未结束课程；电脑需联网且不休眠。')
+        layout = self.page('课程签到', '轻新课堂。可手动选择排课，或每天 08:00 自动安排当天全部未结束课程；电脑需联网且不休眠。')
         layout.addWidget(self.profile_link('轻新课堂'))
         self.course_date = QDateEdit(QDate.currentDate())
         self.course_date.setCalendarPopup(True)
@@ -425,29 +427,7 @@ class Window(DashboardMixin, QMainWindow):
                              button('为勾选课程建立自动签到任务', self.schedule_courses)))
         self.course_table = table(['选择', '课程 / 讲座', '教师', '开始', '结束', '签到状态', '排课 ID'])
         layout.addWidget(self.course_table, 1)
-        manual = QGroupBox('讲座 / 手动排课 ID：仅支持轻新课堂 courseSchedId 二维码')
-        form = QVBoxLayout(manual)
-        self.science_rows = []
-        self.selected_science = None
-        self.science_status = label('科研讲座时间表：尚未查询', 'muted')
-        self.science_choose = button('选择讲座并填入时间', self.choose_science_lecture)
-        self.science_choose.setEnabled(False)
-        self.science_match = button('从轻新课堂自动匹配场次', self.match_science_lecture)
-        self.science_match.setEnabled(False)
-        form.addLayout(row(button('查询科研讲座时间表', self.query_science_schedule), self.science_choose, self.science_match))
-        form.addWidget(self.science_status)
-        self.lecture_id = QLineEdit()
-        self.lecture_id.setPlaceholderText('粘贴二维码解析出的完整链接，或 7 位排课 ID')
-        form.addLayout(row(self.lecture_id, button('读取二维码图片', self.decode_qr), button('立即签到', self.sign_manual, True)))
-        self.lecture_start = QDateTimeEdit(QDateTime.currentDateTime())
-        self.lecture_end = QDateTimeEdit(QDateTime.currentDateTime().addSecs(7200))
-        for box in (self.lecture_start, self.lecture_end):
-            box.setDisplayFormat('yyyy-MM-dd HH:mm')
-            box.setCalendarPopup(True)
-        form.addLayout(row(label('讲座开始'), self.lecture_start, label('结束'), self.lecture_end,
-                           button('建立讲座定时签到任务', self.schedule_lecture)))
-        form.addWidget(label('如果讲座未出现在课表，需提供该场次的二维码 / 排课 ID 及时间。刷卡考勤和其他二维码协议尚不支持。', 'muted'))
-        layout.addWidget(manual)
+        layout.addWidget(button('查看今日讲座与到场提醒 →', lambda: self.nav.setCurrentRow(9)))
 
     def query_science_schedule(self):
         try:
@@ -480,65 +460,6 @@ class Window(DashboardMixin, QMainWindow):
         for kind in ('course', 'lecture'):
             self.disable_plan(kind)
         self.jobs.stop_all()
-
-    def choose_science_lecture(self):
-        dialog = QDialog(self)
-        dialog.setWindowTitle('科研讲座时间表 · 选择后填入签到时间')
-        dialog.resize(1040, 530)
-        layout = QVBoxLayout(dialog)
-        layout.addWidget(label('来自选课系统当前页面。请确认讲座与二维码是同一场；选择时间不会自动创建或提交签到任务。', 'muted'))
-        entries = table(['讲座名称', '时间', '地点'])
-        entries.setRowCount(len(self.science_rows))
-        for index, item in enumerate(self.science_rows):
-            for column, key in enumerate(('title', 'time', 'location')):
-                entries.setItem(index, column, QTableWidgetItem(item.get(key, '')))
-        layout.addWidget(entries)
-
-        def use_selected():
-            index = entries.currentRow()
-            if index < 0:
-                return
-            item = self.science_rows[index]
-            start = QDateTime.fromString(item.get('start', ''), 'yyyy-MM-dd HH:mm:ss')
-            end = QDateTime.fromString(item.get('end', ''), 'yyyy-MM-dd HH:mm:ss')
-            if not start.isValid() or not end.isValid() or end <= start:
-                self.error('该场时间不完整或无法识别，请在学校页面核实后手动填写。')
-                return
-            self.lecture_start.setDateTime(start)
-            self.lecture_end.setDateTime(end)
-            self.lecture_id.clear()
-            self.selected_science = item
-            self.science_match.setEnabled(True)
-            self.science_status.setText('时间已填，可匹配轻新课堂场次或补充二维码：' + item['title'])
-            dialog.accept()
-
-        layout.addLayout(row(button('填入选中场次时间', use_selected, True), button('取消', dialog.reject)))
-        dialog.exec()
-
-    def match_science_lecture(self):
-        if not self.selected_science:
-            return
-        try:
-            lecture = dict(self.selected_science)
-            account = self.account('iclass')
-            date = lecture['start'][:10].replace('-', '')
-
-            def received(courses):
-                if self.selected_science != lecture:
-                    return
-                self.course_date.setDate(QDate.fromString(date, 'yyyyMMdd'))
-                self.populate_courses(courses)
-                matched = match_lecture_course(lecture, courses)
-                if matched:
-                    self.lecture_id.setText(matched['id'])
-                    self.science_status.setText('已匹配本人课表中的唯一同名、同起止时间场次。请确认后建立定时签到任务。')
-                else:
-                    self.lecture_id.clear()
-                    self.science_status.setText('本人轻新课堂课表中没有唯一匹配项，仍需现场二维码；不会用讲座系统编号推算。')
-
-            self.background(lambda: IClass(**account).query(date), received)
-        except Exception as exc:
-            self.error(str(exc))
 
     def query_courses(self):
         try:
@@ -588,46 +509,6 @@ class Window(DashboardMixin, QMainWindow):
                 raise ValueError('请先查询课表并勾选需要签到的课程。')
             payload = self.account('iclass') | {'mode': 'scheduled', 'courses': courses, 'timing': 'random-before-20m'}
             self.start_job('iclass', f'课程自动签到 · {len(courses)} 节', PYTHON, [ROOT / 'adapters/iclass_worker.py'], payload)
-        except Exception as exc:
-            self.error(str(exc))
-
-    def sign_manual(self):
-        try:
-            identifier = course_id(self.lecture_id.text())
-            payload = self.account('iclass') | {'mode': 'single', 'identifier': identifier}
-            self.start_job('iclass-manual', f'轻新课堂签到 · {identifier}', PYTHON, [ROOT / 'adapters/iclass_worker.py'], payload)
-        except Exception as exc:
-            self.error(str(exc))
-
-    def schedule_lecture(self):
-        try:
-            identifier = course_id(self.lecture_id.text())
-            start = self.lecture_start.dateTime()
-            end = self.lecture_end.dateTime()
-            if end <= start or end <= QDateTime.currentDateTime():
-                raise ValueError('结束时间应晚于开始时间和当前时间。')
-            course = {'id': identifier, 'courseName': '讲座 ' + identifier, 'signStatus': '0',
-                      'classBeginTime': start.toString('yyyy-MM-dd HH:mm:ss'), 'classEndTime': end.toString('yyyy-MM-dd HH:mm:ss')}
-            payload = self.account('iclass') | {'mode': 'scheduled', 'courses': [course], 'minutes_before': 0, 'manual': True}
-            self.start_job('lecture-sign', f'讲座定时签到 · {identifier}', PYTHON, [ROOT / 'adapters/iclass_worker.py'], payload)
-        except Exception as exc:
-            self.error(str(exc))
-
-    def decode_qr(self):
-        path, _ = QFileDialog.getOpenFileName(self, '选择二维码图片', '', '图片 (*.png *.jpg *.jpeg *.bmp)')
-        if not path:
-            return
-        try:
-            import cv2
-            import numpy as np
-            data = cv2.imdecode(np.fromfile(path, dtype=np.uint8), cv2.IMREAD_COLOR)
-            if data is None:
-                raise ValueError('无法读取图片。')
-            text, points, _ = cv2.QRCodeDetector().detectAndDecode(data)
-            if not text:
-                raise ValueError('未识别到二维码，请使用清晰、完整的图片。')
-            course_id(text)
-            self.lecture_id.setText(text)
         except Exception as exc:
             self.error(str(exc))
 
@@ -686,7 +567,7 @@ class Window(DashboardMixin, QMainWindow):
         self.lecture_clock_status = label('', 'muted')
         layout.addWidget(self.lecture_clock_status)
         layout.addWidget(label('全天默认每天 48 次。后台检查不弹浏览器；需邮箱验证时先用“只检查候选讲座”登录。首次已有讲座作为基线；一周后可参考报告缩小检查小时。保存后随应用重启自动恢复。', 'muted'))
-        layout.addWidget(label('预约成功不等于已签到。签到在“课程与讲座签到”中单独建立任务。', 'banner'))
+        layout.addWidget(label('预约成功后，请在“今日讲座”查看安排和设置提醒，并按现场要求完成考勤。', 'banner'))
         layout.addStretch()
 
     def set_lecture_all_day(self, enabled):
@@ -1084,10 +965,6 @@ class Window(DashboardMixin, QMainWindow):
                 if message.get('event') == 'iclass.daily-plan' and isinstance(message.get('courses'), list):
                     if self.course_date.date().toString('yyyyMMdd') == message.get('date'):
                         self.populate_courses(message['courses'])
-                if message.get('event') == 'lecture.science-schedule' and isinstance(message.get('rows'), list):
-                    self.science_rows = message['rows']
-                    self.science_choose.setEnabled(bool(self.science_rows))
-                    self.science_status.setText(f'已查询 {len(self.science_rows)} 场；点击选择并填入时间')
             except (ValueError, AttributeError):
                 pass
         if job_id == self.current_log:
@@ -1167,6 +1044,7 @@ class Window(DashboardMixin, QMainWindow):
 
     def navigate(self, index):
         self.pages.setCurrentIndex(index)
+        if index == 9: self.refresh_today_lectures()
         if index == 4 and not self.planner:
             QTimer.singleShot(0, self.load_planner)
         if index == 5:
@@ -1194,6 +1072,8 @@ class Window(DashboardMixin, QMainWindow):
             self.tray.hide()
         self.clock.stop()
         self.automation.timer.stop()
+        self.lecture_timer.stop()
+        for popup in list(self._lecture_popups): popup.close()
         self.jobs.stop_all()
         if self.planner:
             self.planner._save_state()

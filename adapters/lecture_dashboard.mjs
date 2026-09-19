@@ -4,7 +4,7 @@ import { chromium } from '../vendor/ucas-humanity-lecture-bot/node_modules/playw
 import { existsSync } from 'node:fs';
 import { ensureAuthenticated } from '../vendor/ucas-humanity-lecture-bot/dist/src/login.js';
 import { readUpcomingSchedule } from './lecture_pagination.mjs';
-import { parseAttendance } from './lecture_records.mjs';
+import { readAttendance } from './lecture_records.mjs';
 
 export const dashboardParts = ['humanity', 'science', 'humanity-attendance', 'science-attendance'];
 
@@ -30,7 +30,7 @@ export async function queryDashboard(config, logger) {
           await page.goto('https://xkcts.ucas.ac.cn:8443/subject/' + path, {waitUntil:'domcontentloaded', referer:page.url()});
           await page.locator('table th').first().waitFor({timeout:10000});
           if (new URL(page.url()).pathname !== '/subject/' + path) throw new Error('讲座记录会话失效，请重新登录。');
-          value = {...parseAttendance(await page.locator('body').innerText()), url:page.url()};
+          value = {...await readAttendance(page), url:page.url()};
         } else {
           value = await readUpcomingSchedule(page, logger);
         }

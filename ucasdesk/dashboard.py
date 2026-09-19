@@ -63,7 +63,7 @@ class DashboardMixin:
         self.home_card_widgets = {}
         self.home_default_colors = {}
         self.home_cards = {}
-        cards = [('课程与讲座签到', 1, '#d5e8dd', '#315e49'), ('人文讲座', 2, '#f0dfc7', '#85572e'),
+        cards = [('课程签到', 1, '#d5e8dd', '#315e49'), ('人文讲座', 2, '#f0dfc7', '#85572e'),
                  ('国科大在线', 3, '#dae3f3', '#48618e'), ('选课规划', 4, '#e1d9ee', '#695383'),
                  ('自动选课', 5, '#cfe5e8', '#2e6871'), ('科研讲座', 9, '#dfe6c9', '#586734'), ('任务与日志', 6, '#edd8df', '#855363')]
         for index, (title, page, bg, fg) in enumerate(cards):
@@ -104,6 +104,7 @@ class DashboardMixin:
         outer.addWidget(scroll, 1)
 
     def refresh_dashboard(self):
+        self.refresh_today_lectures()
         if not hasattr(self, 'home_cards'):
             return
         active = [x for x in self.jobs.active.values() if not x.get('stopping')]
@@ -287,10 +288,7 @@ class DashboardMixin:
                 if not isinstance(value.get('rows'), list): raise ValueError('讲座列表格式不正确')
                 self.activity.snapshot(batch.account, 'calendar-' + part, value)
                 detail = f'今天及之后 {len(value["rows"])} 场 · 已读取 {value.get("pages", 1)} 页'
-                if part == 'science':
-                    self.science_rows = value['rows']
-                    self.science_choose.setEnabled(bool(self.science_rows))
-                    self.science_status.setText('一键刷新：' + detail + '；可选择场次')
+
             else:
                 if not isinstance(value.get('valid'), int) or value['valid'] < 0: raise ValueError('有效听讲次数无法识别')
                 records = self.activity.get_snapshot(batch.account, 'attendance').get('payload', {})
@@ -492,33 +490,28 @@ class DashboardMixin:
         return title + '\n' + '\n'.join(f'{r.get("time", "时间未知")} · {r["title"]}\n{r.get("location") or "地点未提供"}' for r in rows)
 
     def show_today_lectures(self):
-        from .ui import label, table
-        dialog = QDialog(self)
-        dialog.setWindowTitle('今日人文 / 科研讲座安排')
-        dialog.resize(1050, 530)
-        layout = QVBoxLayout(dialog)
-        layout.addWidget(label('保留所有校区并显示地点，方便核对；自动预约仍仅允许雁栖湖。列表来自最近一次查询，学校变更请刷新。'))
-        view = table(['类型', '讲座', '时间', '地点', '最近查询'])
-        all_rows = []
-        for kind, title in [('humanity', '人文'), ('science', '科研')]:
-            saved, rows = self.lecture_today_rows(kind)
-            all_rows.extend([title, row['title'], row.get('time', ''), row.get('location') or '未提供', saved['at']] for row in rows)
-        view.setRowCount(len(all_rows))
-        for index, values in enumerate(all_rows):
-            for col, value in enumerate(values): view.setItem(index, col, QTableWidgetItem(value))
-        layout.addWidget(view)
-        enable_copy(dialog)
-        dialog.exec()
+        self.nav.setCurrentRow(9)
 
     def activity_event(self, job_id, event):
         job = self.jobs.active.get(job_id, {})
         account = job.get('account')
         if not account: return
         name = event.get('event')
+        if name == 'dashboard.part' and job.get('preview') and job.get('module') == 'lecture' and event.get('ok'):
+            batch = getattr(self, '_overview_refresh', None)
+            if batch and job_id == batch.lecture_job: return  # Overview applies its own credential-version guard.
+            if account != scope(self.vault, 'sep'): return
+            part, value = event.get('part'), event.get('value', {})
+            if part in ('humanity','science') and isinstance(value.get('rows'),list):
+                self.activity.snapshot(account,'calendar-'+part,value)
+            elif part in ('humanity-attendance','science-attendance') and isinstance(value.get('valid'),int):
+                records=self.activity.get_snapshot(account,'attendance').get('payload',{})
+                records[part.split('-')[0]]=value
+                self.activity.snapshot(account,'attendance',records)
         if name == 'lecture.calendar' and event.get('kind') in ('humanity', 'science') and isinstance(event.get('rows'), list) and job.get('module') in ('lecture', 'lecture-clock'):
-            self.activity.snapshot(account, 'calendar-' + event['kind'], {'rows': event['rows'], 'scope': event.get('scope', 'current-page')})
+            self.activity.snapshot(account, 'calendar-' + event['kind'], {k:v for k,v in event.items() if k not in ('event','kind')})
         if name == 'lecture.science-schedule' and isinstance(event.get('rows'), list):
-            self.activity.snapshot(account, 'calendar-science', {'rows': event['rows'], 'scope': 'current-page'})
+            self.activity.snapshot(account, 'calendar-science', {k:v for k,v in event.items() if k != 'event'})
         if name == 'lecture.attendance' and job.get('module') == 'lecture':
             records = event.get('records', {})
             if all(isinstance(records.get(k, {}).get('valid'), int) and records[k]['valid'] >= 0 for k in ('humanity', 'science')):

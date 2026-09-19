@@ -51,7 +51,7 @@ jobs:
           node --test tests/*.test.mjs
       - name: Offline UI and process tests
         run: |
-          for file in automation_ui_smoke profile_planner_smoke dashboard_ui_smoke refresh_ui_smoke macos_jobs_smoke; do
+          for file in automation_ui_smoke profile_planner_smoke dashboard_ui_smoke refresh_ui_smoke lectures_ui_smoke macos_jobs_smoke; do
             ${{ matrix.python }} tests/$file.py
           done
       - name: Native Linux keyring test
@@ -72,6 +72,7 @@ jobs:
           node tests/lecture_portal_smoke.mjs
           node tests/lecture_campus_smoke.mjs
           node tests/lecture_pagination_smoke.mjs
+          node tests/lecture_attendance_smoke.mjs
           node tests/lecture_captcha_smoke.mjs
           ${{ matrix.python }} tests/lecture_patch_smoke.py
       - name: Native macOS Keychain test
