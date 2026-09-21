@@ -1,5 +1,5 @@
 // Read-only timetable traversal. Only the site's pagination control is clicked.
-import {readScienceSchedule} from '../vendor/ucas-humanity-lecture-bot/dist/src/portal.js';
+import {readScienceSchedule as readBaseSchedule} from '../vendor/ucas-humanity-lecture-bot/dist/src/portal.js';
 
 export function beijingDate(now = new Date()) {
   const parts = new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(now);
@@ -87,4 +87,22 @@ export async function readUpcomingSchedule(page, logger, options={}) {
     }
     throw new Error('讲座翻页超时或页面未变化，未确认读取完整；保留上次结果。');
   }, {...options,progress:data=>logger?.info('lecture.pagination',data)});
+}
+
+// Read status from the same table as the timetable, without submitting actions.
+export async function readScienceSchedule(page) {
+  const rows = await readBaseSchedule(page);
+  const statuses = await page.locator('table tr').evaluateAll(elements => elements.map(row => {
+    const cells = [...row.querySelectorAll('td')].map(td => (td.textContent || '').replace(/\s+/g, ' ').trim());
+    const headers = [...(row.closest('table')?.querySelectorAll('th') || [])].map(th => th.textContent.trim());
+    const status = cells.filter((_, i) => /报名|预约|操作|状态/.test(headers[i] || '')).join(' ');
+    return {title: cells[headers.indexOf('讲座名称')], status};
+  }));
+  return rows.map(row => {
+    const matches = statuses.filter(s => s.title === row.title);
+    const status = matches.length === 1 ? matches[0].status : '';
+    const registered = /已报名|已预约|取消报名|取消预约|退选/.test(status) && !/未报名|未预约/.test(status);
+    const free = /无需报名|不需报名|无需预约|免预约|免报名/.test(status);
+    return {...row, registrationStatus: registered ? 'registered' : free ? 'not-required' : 'unknown-or-unregistered'};
+  });
 }

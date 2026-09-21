@@ -2,6 +2,7 @@
 from datetime import datetime, timedelta
 from PySide6.QtCore import QObject, QTimer, Signal
 from .core import DATA, ROOT, PYTHON, NODE, read_json, write_json, redact
+import sys
 
 
 def lecture_slot(now, hours):
@@ -34,6 +35,7 @@ class Automation(QObject):
         self.config = read_json(self.path, {})
         self.state = read_json(self.state_path, {})
         self.daily_started = None
+        self.calendar_sync_day = None
         self.messages = {}
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.tick)
@@ -74,6 +76,17 @@ class Automation(QObject):
                 self.run_due(kind, now)
             except Exception as exc:
                 self.messages[kind] = redact(str(exc), self.vault.secret_values())
+        if sys.platform == 'darwin' and now.hour == 22 and now.minute == 0 and self.calendar_sync_day != now.date():
+            try:
+                from .macos_calendar import sync_tomorrow
+                activity = getattr(self.parent(), 'activity', None)
+                if activity is None:
+                    raise RuntimeError('本地日历同步尚未准备好')
+                count, message = sync_tomorrow(activity, self.vault.get('iclass').get('username',''), self.vault.get('sep').get('username',''))
+                self.calendar_sync_day = now.date()
+                self.messages['calendar'] = message
+            except Exception as exc:
+                self.messages['calendar'] = redact(str(exc), self.vault.secret_values())
         self.changed.emit()
 
     def run_due(self, kind, now):

@@ -262,13 +262,22 @@ class Window(LecturesMixin, DashboardMixin, QMainWindow):
         QApplication.instance().quit()
 
     def page(self, title, subtitle):
-        widget = QWidget()
+        outer = QWidget()
+        widget = outer
+        if title.startswith('人文讲座'):
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QScrollArea.NoFrame)
+            widget = QWidget()
+            scroll.setWidget(widget)
+            self.pages.addWidget(scroll)
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(28, 25, 28, 22)
         layout.setSpacing(16)
         layout.addWidget(label(title, 'title'))
         layout.addWidget(label(subtitle, 'muted'))
-        self.pages.addWidget(widget)
+        if not title.startswith('人文讲座'):
+            self.pages.addWidget(widget)
         return layout
 
     def error(self, text):

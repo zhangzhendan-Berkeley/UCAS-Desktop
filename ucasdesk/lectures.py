@@ -1,5 +1,6 @@
 """Today's lecture cards and non-modal desktop reminders."""
 import json
+from .lecture_visibility import visible_lecture
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QScrollArea,
     QFrame, QCheckBox, QSpinBox, QProgressBar, QDialog, QComboBox)
@@ -21,6 +22,8 @@ class LecturesMixin:
         self.jobs.ended.connect(self.lecture_information_finished)
         layout = parent_layout or self.page('今日讲座', '人文与科研 · 今日安排、听讲进度与到场提醒（北京时间）')
         layout.addLayout(row(button('刷新讲座与听讲记录', self.refresh_lecture_information, True),
+                             button('立即同步明日到 macOS 日历', self.sync_calendar_now),
+                             button('导出到日历（ICS）', self.export_calendar),
                              button('测试弹窗', self.test_lecture_popup)))
         self.lecture_progress = {}
         progress = QHBoxLayout()
@@ -49,6 +52,25 @@ class LecturesMixin:
         self.lecture_timer = QTimer(self); self.lecture_timer.setInterval(5000)
         self.lecture_timer.timeout.connect(self.lecture_tick); self.lecture_timer.start()
         self.refresh_today_lectures()
+
+    def export_calendar(self):
+        try:
+            from .calendar_export import export_ics
+            from .activity import scope
+            path, count = export_ics(self.activity, scope(self.vault, 'iclass'), scope(self.vault, 'sep'))
+            self.statusBar().showMessage(f'已导出 {count} 个日历事件：{path}')
+            self.open_path(path)
+        except Exception as exc:
+            self.error(str(exc))
+
+    def sync_calendar_now(self):
+        try:
+            from .macos_calendar import sync_tomorrow
+            from .activity import scope
+            _, message = sync_tomorrow(self.activity, scope(self.vault, 'iclass'), scope(self.vault, 'sep'))
+            self.statusBar().showMessage(message)
+        except Exception as exc:
+            self.error(str(exc))
 
     def refresh_lecture_information(self):
         from .core import NODE, ROOT
@@ -105,7 +127,7 @@ class LecturesMixin:
         for kind,saved in calendars.items():
             for row in saved.get('payload',{}).get('rows',[]):
                 start=start_time(row)
-                if start and start.date()==now.date(): rows.append((kind,row))
+                if visible_lecture(kind,row) and start and start.date()==now.date(): rows.append((kind,row))
         rows.sort(key=lambda item:start_time(item[1]))
         # Keep text selection and keyboard focus across timer ticks.
         signature=json.dumps([account,calendars,self.reminders.config(account),now.strftime('%Y-%m-%d %H:%M')],sort_keys=True,ensure_ascii=False)
@@ -120,7 +142,7 @@ class LecturesMixin:
         old=self.lecture_scroll.takeWidget()
         if old: old.deleteLater()
         self.lecture_scroll.setWidget(content)
-        self.lecture_list_summary.setText(now.strftime('%m 月 %d 日') + f' · 共 {len(rows)} 场 · 按开始时间排列 · 列出所有校区，请核对地点')
+        self.lecture_list_summary.setText(now.strftime('%m 月 %d 日') + f' · 共 {len(rows)} 场 · 按开始时间排列 · 人文/科研仅雁栖湖 · 仅已报名或无需报名场次')
         stamps=[KINDS[k][0]+' '+v['at'].replace('T',' ') for k,v in calendars.items() if v]
         if not self._lecture_refresh_job:
             self.lecture_refresh_hint.setText('最近同步：'+' / '.join(stamps) if stamps else '尚未同步；没有查询到数据不等于今天没有讲座。')
@@ -161,6 +183,7 @@ class LecturesMixin:
             self.refresh_today_lectures()
             account=scope(self.vault,'sep')
             calendars={k:self.activity.get_snapshot(account,'calendar-'+k).get('payload',{}).get('rows',[]) for k in KINDS}
+            calendars={k:[r for r in rows if visible_lecture(k,r)] for k,rows in calendars.items()}
             due=self.reminders.due(account,calendars)
             if due:
                 self.show_lecture_popup(due)

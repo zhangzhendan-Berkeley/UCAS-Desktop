@@ -1,5 +1,5 @@
 """Dashboard integration, strictly separated from school write operations."""
-from datetime import datetime
+from datetime import datetime, timedelta
 import sqlite3
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor
@@ -27,10 +27,12 @@ class DashboardMixin:
         layout.setSpacing(18)
         self.home_status = label('', 'muted')
         self.refresh_all_button = button('一键刷新全部信息', self.refresh_all, True)
+        self.calendar_import_button = button('导入未来 7 天到 macOS 日历', self.import_calendar_week)
         toolbar = QHBoxLayout()
         toolbar.addWidget(self.home_status, 1)
         toolbar.addWidget(button('自定义概览', self.customize_home))
         toolbar.addWidget(self.refresh_all_button)
+        toolbar.addWidget(self.calendar_import_button)
         layout.addLayout(toolbar)
         self.refresh_summary = label('学校信息按需同步，后台任务状态每 5 秒更新。', 'muted')
         self.refresh_details_button = button('查看刷新明细', self.toggle_refresh_details)
@@ -175,6 +177,53 @@ class DashboardMixin:
             (f' · 最近：{names.get(result[0], result[0])} {result[1]} {result[2]}' if result else ''))
         self.apply_home_preferences()
         self.pump_mail()
+
+    def import_calendar_week(self):
+        try:
+            from .macos_calendar import sync_range
+            from .iclass import IClass
+            import sys
+            if sys.platform != 'darwin':
+                raise ValueError('此按钮仅支持 macOS 日历；其他系统可使用 ICS 导出。')
+            if getattr(self, '_calendar_import_running', False):
+                return
+            credentials = self.account('iclass').copy()
+            course_scope, sep_scope = scope(self.vault, 'iclass'), scope(self.vault, 'sep')
+            self._calendar_import_running = True
+            self.calendar_import_button.setEnabled(False)
+            def work():
+                client = IClass(**credentials)
+                start = datetime.now().date()
+                courses = []
+                failures = []
+                for i in range(7):
+                    day = start + timedelta(days=i)
+                    date_text = day.strftime('%Y%m%d')
+                    try:
+                        courses.extend(client.query(date_text))
+                    except Exception as first_error:
+                        # A long-running session can expire between dates. Re-login once,
+                        # then keep successful dates instead of discarding the whole import.
+                        try:
+                            client.session_id = None
+                            courses.extend(client.query(date_text))
+                        except Exception as second_error:
+                            failures.append(f'{day.isoformat()}: {second_error}')
+                self.activity.snapshot(course_scope, 'calendar-courses', {'courses': courses})
+                if not courses and failures:
+                    raise RuntimeError('未来 7 天课表均查询失败：' + '；'.join(failures))
+                result = sync_range(self.activity, course_scope, sep_scope, days=7, courses=courses)
+                if failures:
+                    result = (result[0], result[1] + '；课表失败日期：' + '；'.join(failures))
+                return result
+            def finish(result=None, error=None):
+                self._calendar_import_running = False
+                self.calendar_import_button.setEnabled(True)
+                if error: self.error(error)
+                else: self.refresh_summary.setText(result[1])
+            self.background(work, lambda result: finish(result=result), lambda error: finish(error=error))
+        except Exception as exc:
+            self.error(str(exc))
 
     def refresh_all(self):
         if getattr(self, '_overview_refresh', None) and not self._overview_refresh.finished:
@@ -478,7 +527,7 @@ class DashboardMixin:
         rows = []
         for item in saved.get('payload', {}).get('rows', []):
             match = re.search(r'(20\d{2})[年/-](\d{1,2})[月/-](\d{1,2})', item.get('time') or '')
-            if match and tuple(map(int, match.groups())) == (today.year, today.month, today.day): rows.append(item)
+            if __import__('ucasdesk.lecture_visibility', fromlist=['visible_lecture']).visible_lecture(kind, item) and match and tuple(map(int, match.groups())) == (today.year, today.month, today.day): rows.append(item)
         return saved, sorted(rows, key=lambda r: r.get('time') or '')
 
     def lecture_today_text(self, kind):

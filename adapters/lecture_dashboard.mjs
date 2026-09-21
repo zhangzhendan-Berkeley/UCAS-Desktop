@@ -9,7 +9,9 @@ import { readAttendance } from './lecture_records.mjs';
 export const dashboardParts = ['humanity', 'science', 'humanity-attendance', 'science-attendance'];
 
 export async function queryDashboard(config, logger) {
-  const browser = await chromium.launch({ ...browserLaunchOptions(), headless: config.headless });
+  // Dashboard refresh is interactive: keep Edge visible so the user can
+  // complete CAPTCHA, new-device, or email verification when required.
+  const browser = await chromium.launch({ ...browserLaunchOptions(), headless: false });
   let failed = false;
   let authenticationFailure = null;
   try {

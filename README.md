@@ -40,7 +40,7 @@ Linux 账号通过已解锁的 Secret Service / KWallet 系统密钥环保存；
 ## v0.4.0：macOS 源码运行支持
 
 - macOS 13+ 可从源码安装，支持菜单栏后台运行、原生钥匙串保存账号、Edge / Chrome 浏览器及任务子进程停止。详见 **[macOS 安装与运行](docs/macOS安装.md)**。
-- Windows 继续提供免安装 ZIP；macOS 暂无 `.app` / `.dmg`，不要使用 Windows ZIP。
+- Windows 继续提供免安装 ZIP；macOS 可用 `scripts/build_macos_app.py` 生成本机 `.app`，不要使用 Windows ZIP。
 - 手机面板支持手动指定自己的桌面 API 地址；地址变更时断开旧连接并清除旧密钥，需要重新连接。
 - 保留 v0.3.3 的课程调度、主页彩色课表、一键刷新和邮件提醒；增加 Windows / macOS 的自动回归检查。
 - 感谢代码提交署名 [cuizixian0328](https://github.com/zhangzhendan-Berkeley/UCAS-Desktop/commit/010c2ed9e703) 和 PR 提交账号 [@zihenghe04](https://github.com/zihenghe04)，贡献见 [PR #1](https://github.com/zhangzhendan-Berkeley/UCAS-Desktop/pull/1)。

@@ -1,6 +1,6 @@
 # macOS 安装与运行
 
-v0.4.0 新增 macOS 源码运行支持，感谢提交署名 cuizixian0328 与 [@zihenghe04 的 PR #1](https://github.com/zhangzhendan-Berkeley/UCAS-Desktop/pull/1)。目前不提供签名的 `.app` / `.dmg`；Windows 便携 ZIP 不能用于 Mac。
+v0.4.0 新增 macOS 源码运行支持，感谢提交署名 cuizixian0328 与 [@zihenghe04 的 PR #1](https://github.com/zhangzhendan-Berkeley/UCAS-Desktop/pull/1)。项目提供本机未签名 `.app` 构建脚本；Windows 便携 ZIP 不能用于 Mac。
 
 ## 环境
 
@@ -22,6 +22,15 @@ python3.12 scripts/setup.py
 ```
 
 安装器创建独立 `.venv` 并下载固定版本的依赖。后续可在项目目录运行 `bash 启动mac.sh`。
+
+需要桌面图标时，在项目目录运行：
+
+```bash
+python3.12 scripts/build_macos_app.py
+open "Ucas Desktop.app"
+```
+
+生成的应用会使用当前项目目录中的 `.venv`、浏览器模块和本地数据。首次打开未签名应用时，可在 Finder 中右键选择“打开”。
 
 人文预约和自动选课依赖需另行启用。阅读 [来源与许可](../THIRD_PARTY.md) 后，可执行：
 
