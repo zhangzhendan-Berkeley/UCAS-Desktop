@@ -45,6 +45,23 @@ Linux 账号通过已解锁的 Secret Service / KWallet 系统密钥环保存；
 - 保留 v0.3.3 的课程调度、主页彩色课表、一键刷新和邮件提醒；增加 Windows / macOS 的自动回归检查。
 - 感谢代码提交署名 [cuizixian0328](https://github.com/zhangzhendan-Berkeley/UCAS-Desktop/commit/010c2ed9e703) 和 PR 提交账号 [@zihenghe04](https://github.com/zihenghe04)，贡献见 [PR #1](https://github.com/zhangzhendan-Berkeley/UCAS-Desktop/pull/1)。
 
+## macOS 新版本使用说明（主分支）
+
+macOS 用户建议直接使用主分支源码。当前版本已包含今日讲座日程、到场提醒、科研讲座每日自动报名、菜单栏后台运行以及 Edge 优先的浏览器选择；这些更新可能尚未进入旧的 v0.4.0 发布包。
+
+```bash
+git clone https://github.com/zhangzhendan-Berkeley/UCAS-Desktop.git
+cd UCAS-Desktop
+python3.12 scripts/setup.py --with-external-modules
+bash 启动mac.sh
+```
+
+`--with-external-modules` 会安装人文讲座、科研讲座和自动选课所需的固定模块。只使用签到、课程规划和慕课功能时，可以省略该选项。首次使用请在“个人信息”填写账号；需要浏览器自动化的功能优先使用 Microsoft Edge，也支持 Google Chrome。
+
+macOS 上关闭窗口后应用会继续在菜单栏后台运行，点击菜单栏图标可重新打开；选择“退出程序”才会停止任务。电脑休眠、关机或应用退出期间不会执行定时任务。需要桌面图标时，可运行 `python3.12 scripts/build_macos_app.py` 生成本机未签名 `.app`，但日常排查和更新建议优先使用 `bash 启动mac.sh`。
+
+科研讲座自动报名默认每天 08:00 尝试一次，仅选择雁栖湖场次；同一开始时间只报名一场，并优先人工智能、机器学习、深度学习、神经网络、自然语言处理、计算机视觉、机器人和具身智能等关键词。报名尚未开放或人数已满时会记录失败并结束当天尝试，不能保证学校名额或网络状态。
+
 ## v0.3.3：课程签到随机时间
 
 每日计划和勾选课程任务，均为每节课在开课前 20 分钟内随机选定一次执行时间，精确到秒并保存；重启沿用同一时间，旧“提前 5 分钟”设置不再生效。日志中的 `iclass.scheduled` 显示各节计划时间。已开课或重启时错过计划时间，仍按原规则补查；已结束课程不提交。升级需退出旧进程并重新打开，正在运行的旧任务不会自动切换。
