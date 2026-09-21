@@ -154,7 +154,7 @@ class Window(LecturesMixin, DashboardMixin, QMainWindow):
         side.addSpacing(28)
         self.nav = QListWidget()
         self.nav.setObjectName('navigation')
-        self.nav.addItems(['概览', '课程签到', '人文讲座预约', '国科大在线', '选课规划', '自动选课', '任务与日志', '设置与更新', '个人信息', '今日讲座'])
+        self.nav.addItems(['概览', '课程签到', '人文/科研讲座', '国科大在线', '选课规划', '自动选课', '任务与日志', '设置与更新', '个人信息'])
         side.addWidget(self.nav)
         self.runtime_hint = label('本地运行 · v0.4.0\n关闭窗口后托盘运行\n右键托盘可退出程序', 'sideText')
         side.addWidget(self.runtime_hint)
@@ -171,7 +171,7 @@ class Window(LecturesMixin, DashboardMixin, QMainWindow):
         self.build_jobs()
         self.build_settings()
         self.build_profile()
-        self.build_today_lectures()
+        self.build_today_lectures(self.lecture_layout)
         enable_copy(self)
         self.nav.currentRowChanged.connect(self.navigate)
         self.nav.setCurrentRow(0)
@@ -427,7 +427,7 @@ class Window(LecturesMixin, DashboardMixin, QMainWindow):
                              button('为勾选课程建立自动签到任务', self.schedule_courses)))
         self.course_table = table(['选择', '课程 / 讲座', '教师', '开始', '结束', '签到状态', '排课 ID'])
         layout.addWidget(self.course_table, 1)
-        layout.addWidget(button('查看今日讲座与到场提醒 →', lambda: self.nav.setCurrentRow(9)))
+        layout.addWidget(button('查看人文/科研讲座 →', lambda: self.nav.setCurrentRow(2)))
 
     def query_science_schedule(self):
         try:
@@ -513,7 +513,8 @@ class Window(LecturesMixin, DashboardMixin, QMainWindow):
             self.error(str(exc))
 
     def build_lecture(self):
-        layout = self.page('人文讲座预约', '使用 SEP 的人文讲座报名入口。先查看候选结果，再按自己的空闲时间建立报名任务。')
+        layout = self.page('人文讲座 / 科研讲座预约', '统一管理雁栖湖讲座报名、每日自动任务、今日讲座和到场提醒。')
+        self.lecture_layout = layout
         layout.addWidget(self.profile_link('SEP 信息门户'))
         group = QGroupBox('筛选可以参加的讲座')
         form = QVBoxLayout(group)
@@ -525,24 +526,10 @@ class Window(LecturesMixin, DashboardMixin, QMainWindow):
             self.days.append(check)
             days.addWidget(check)
         form.addLayout(days)
-        self.lecture_from = QTimeEdit(QTime(18, 0))
-        self.lecture_to = QTimeEdit(QTime(22, 0))
-        self.lecture_all_day = QCheckBox('全天（不限制讲座开始时间，仍按所选星期和雁栖湖筛选）')
-        form.addWidget(self.lecture_all_day)
-        self.lecture_all_day.toggled.connect(self.set_lecture_all_day)
-        self.lecture_interval = QSpinBox()
-        self.lecture_interval.setRange(5, 180)
-        self.lecture_interval.setValue(30)
-        self.lecture_interval.setSuffix(' 分钟')
-        self.lecture_rounds = QSpinBox()
-        self.lecture_rounds.setRange(1, 144)
-        self.lecture_rounds.setValue(12)
-        form.addLayout(row(label('讲座开始时段'), self.lecture_from, label('至'), self.lecture_to))
-        form.addLayout(row(label('巡检间隔'), self.lecture_interval, label('最多巡检'), self.lecture_rounds, label('次')))
-        form.addWidget(label('首次登录时会打开浏览器；出现新设备或邮箱验证时，在浏览器内完成。达到学校页面显示的预约配额后停止。', 'muted'))
+        form.addWidget(label('报名只选择地点明确为雁栖湖的讲座；首次运行会打开 Edge，出现验证时请在浏览器中完成。', 'muted'))
         form.addWidget(label('报名仅限地点明确包含“雁栖湖”的讲座；中关村、玉泉路、其他校区及地点不明均跳过。', 'muted'))
         layout.addWidget(group)
-        layout.addLayout(row(button('只检查候选讲座', lambda: self.run_lecture(True, False)), button('报名一轮', lambda: self.run_lecture(False, False), True), button('按间隔巡检（旧方式）', lambda: self.run_lecture(False, True))))
+        layout.addLayout(row(button('检查候选讲座', lambda: self.run_lecture(True, False)), button('立即报名一轮', lambda: self.run_lecture(False, False), True)))
         clock = self.automation.config.get('lecture', {})
         self.lecture_clock = QCheckBox('每小时 01 / 31 分检查并记录新讲座')
         self.lecture_clock.setChecked(clock.get('enabled', False))
@@ -552,23 +539,20 @@ class Window(LecturesMixin, DashboardMixin, QMainWindow):
         self.lecture_hours.setPlaceholderText('0–23 的小时，用英文逗号分隔')
         for index, check in enumerate(self.days):
             check.setChecked((index + 1) % 7 in clock.get('days', [0, 1, 2, 3, 4, 5, 6]))
-        self.lecture_from.setTime(QTime.fromString(clock.get('from', '00:00'), 'HH:mm'))
-        self.lecture_to.setTime(QTime.fromString(clock.get('to', '23:59'), 'HH:mm'))
-        self.lecture_all_day.setChecked(clock.get('from', '00:00') == '00:00' and clock.get('to', '23:59') == '23:59')
-        self.lecture_filter_hint = label('筛选依据是讲座开始时间，不是报名发布时间；例如 18:00–22:00 会排除 15:30 开始的讲座。', 'muted')
+        self.lecture_filter_hint = label('自动任务会读取全部讲座，只报名地点明确为雁栖湖的场次。', 'muted')
         layout.addWidget(self.lecture_filter_hint)
         layout.addWidget(self.lecture_clock)
         layout.addWidget(self.lecture_book)
-        layout.addLayout(row(label('检查小时'), self.lecture_hours))
-        layout.addLayout(row(button('保存定点计划', self.save_lecture_plan, True),
-                             button('停用定点计划', lambda: self.disable_plan('lecture')),
-                             button('查看发布时间观察', self.show_lecture_report),
-                             button('核对后解除报名暂停', self.clear_booking_pause)))
+        self.science_daily = QCheckBox('每日 08:00 自动尝试报名科研讲座（仅雁栖湖；同一开始时间只报一场，优先人工智能相关）')
+        self.science_daily.setChecked(self.automation.config.get('science', {}).get('enabled', False))
+        layout.addWidget(self.science_daily)
+        layout.addLayout(row(label('人文自动检查小时'), self.lecture_hours))
+        layout.addLayout(row(button('保存自动任务', self.save_lecture_plan, True),
+                             button('停用自动任务', lambda: self.disable_plan('lecture'))))
         self.lecture_clock_status = label('', 'muted')
         layout.addWidget(self.lecture_clock_status)
-        layout.addWidget(label('全天默认每天 48 次。后台检查不弹浏览器；需邮箱验证时先用“只检查候选讲座”登录。首次已有讲座作为基线；一周后可参考报告缩小检查小时。保存后随应用重启自动恢复。', 'muted'))
-        layout.addWidget(label('预约成功后，请在“今日讲座”查看安排和设置提醒，并按现场要求完成考勤。', 'banner'))
-        layout.addStretch()
+        layout.addWidget(label('人文讲座按保存的检查小时自动运行；科研讲座每天 08:00 自动尝试一次。电脑需保持运行，任务结果见“任务与日志”。', 'muted'))
+        layout.addWidget(label('下方同步显示今日讲座、听讲进度与提醒设置；报名成功后请按现场要求完成考勤。', 'banner'))
 
     def set_lecture_all_day(self, enabled):
         self.lecture_from.setEnabled(not enabled)
@@ -581,16 +565,18 @@ class Window(LecturesMixin, DashboardMixin, QMainWindow):
         try:
             if not self.lecture_clock.isChecked():
                 self.disable_plan('lecture')
+                self.automation.save('science', {'enabled': self.science_daily.isChecked()})
                 return
             self.account('sep')
             hours = sorted({int(x.strip()) for x in self.lecture_hours.text().replace('，', ',').split(',') if x.strip()})
             days = [(index + 1) % 7 for index, c in enumerate(self.days) if c.isChecked()]
             if not hours or any(x < 0 or x > 23 for x in hours):
                 raise ValueError('检查小时应为 0–23 的整数，用逗号分隔。')
-            if not days or self.lecture_to.time() <= self.lecture_from.time():
-                raise ValueError('请至少选择一天并设置有效的讲座开始时段。')
+            if not days:
+                raise ValueError('请至少选择一天。')
             self.automation.save('lecture', {'enabled': True, 'book': self.lecture_book.isChecked(), 'hours': hours,
-                'days': days, 'from': self.lecture_from.time().toString('HH:mm'), 'to': self.lecture_to.time().toString('HH:mm')})
+                'days': days, 'from': '00:00', 'to': '23:59'})
+            self.automation.save('science', {'enabled': self.science_daily.isChecked()})
             self.automation.tick()
         except Exception as exc:
             self.error(str(exc))
@@ -636,11 +622,11 @@ class Window(LecturesMixin, DashboardMixin, QMainWindow):
     def run_lecture(self, preview, scheduled):
         try:
             days = [(index + 1) % 7 for index, c in enumerate(self.days) if c.isChecked()]
-            if not days or self.lecture_to.time() <= self.lecture_from.time():
-                raise ValueError('请至少选一天，并设置有效的起止时段。')
+            if not days:
+                raise ValueError('请至少选择一天。')
             payload = self.account('sep') | {'preview': preview, 'scheduled': scheduled, 'days': days,
-                      'from': self.lecture_from.time().toString('HH:mm'), 'to': self.lecture_to.time().toString('HH:mm'),
-                      'interval': self.lecture_interval.value(), 'rounds': self.lecture_rounds.value()}
+                      'from': '00:00', 'to': '23:59',
+                      'interval': 30, 'rounds': 1}
             title = '人文讲座 · ' + ('候选预览' if preview else '定时预约' if scheduled else '报名一轮')
             self.start_job('lecture', title, NODE, [ROOT / 'adapters/lecture.mjs'], payload)
         except Exception as exc:
@@ -1044,7 +1030,7 @@ class Window(LecturesMixin, DashboardMixin, QMainWindow):
 
     def navigate(self, index):
         self.pages.setCurrentIndex(index)
-        if index == 9: self.refresh_today_lectures()
+        if index == 2: self.refresh_today_lectures()
         if index == 4 and not self.planner:
             QTimer.singleShot(0, self.load_planner)
         if index == 5:

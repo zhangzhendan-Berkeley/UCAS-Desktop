@@ -51,7 +51,7 @@ class Automation(QObject):
         self.save(kind, self.config.get(kind, {}) | {'enabled': False})
         if kind == 'course':
             self.daily_started = None
-        module = 'iclass-daily' if kind == 'course' else 'lecture-clock'
+        module = 'iclass-daily' if kind == 'course' else ('science-daily' if kind == 'science' else 'lecture-clock')
         for job_id, item in list(self.jobs.active.items()):
             if item['module'] == module:
                 self.jobs.stop(job_id)
@@ -67,7 +67,7 @@ class Automation(QObject):
 
     def tick(self, now=None):
         now = now or datetime.now()
-        for kind in ('course', 'lecture'):
+        for kind in ('course', 'lecture', 'science'):
             if not self.enabled(kind):
                 continue
             try:
@@ -91,6 +91,22 @@ class Automation(QObject):
                                 'timing': 'random-before-20m'})
             self.daily_started = today
             self.messages[kind] = f'{today} 已启动课表检查与定时签到；结果见任务日志'
+        elif kind == 'science':
+            today = now.date().isoformat()
+            if now.hour < 8 or self.state.get('science_daily') == today or 'science-daily' in active:
+                return
+            account = self.credentials(kind)
+            if not (ROOT / 'vendor/ucas-humanity-lecture-bot/dist/src/workflow.js').exists():
+                raise ValueError('请先安装人文/科研讲座外部模块。')
+            self.state['science_daily'] = today
+            write_json(self.state_path, self.state)
+            self.jobs.start('science-daily', f'每日 08:00 科研讲座报名 · {today}', NODE,
+                            [ROOT / 'adapters/lecture.mjs'], account | {
+                                'action': 'science-book', 'lectureUrl': 'https://xkcts.ucas.ac.cn:8443/subject/lecture',
+                                'science': True, 'scienceMode': True, 'onePerStartTime': True,
+                                'scienceKeywords': ['人工智能', '机器学习', '深度学习', '神经网络', '大模型', '自然语言处理', '计算机视觉', '机器人', '具身智能'],
+                                'preview': False})
+            self.messages[kind] = f'{today} 已启动科研讲座报名；结果见任务日志'
         else:
             slot = lecture_slot(now, config.get('hours', list(range(24))))
             if not slot or self.state.get('lecture_slot') == slot:

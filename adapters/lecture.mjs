@@ -29,7 +29,11 @@ try {
   process.env.UCAS_STORAGE_STATE = join(dir, 'browser-state.json');
   const configPath = join(dir, 'config.json');
   writeFileSync(configPath, JSON.stringify({
-    runtime: { mode: 'single', dryRun: Boolean(p.preview), headless: false, statePath: join(dir, 'state.json') },
+    runtime: { mode: 'single', dryRun: Boolean(p.preview), headless: false, statePath: join(dir, p.science ? 'science-state.json' : 'state.json') },
+    targets: { lectureUrl: p.lectureUrl || 'https://xkcts.ucas.ac.cn:8443/subject/humanityLecture' },
+    scienceMode: Boolean(p.scienceMode),
+    onePerStartTime: Boolean(p.onePerStartTime),
+    scienceKeywords: p.scienceKeywords || [],
     captcha: { enabled: true, pythonExecutable: process.env.UCAS_PYTHON || join(root, '.venv', 'Scripts', 'python.exe'), maxAttempts: 3 },
     filter: { timeWindows: (p.days || [0, 1, 2, 3, 4, 5, 6]).map(weekday => ({ weekday, periods: [[p.from || '00:00', p.to || '23:59']] })) },
     logging: { level: 'info' },

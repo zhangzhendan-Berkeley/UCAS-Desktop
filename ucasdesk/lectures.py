@@ -11,7 +11,7 @@ KINDS = {'humanity': ('人文讲座', '#85572e', '#f0dfc7'),
 
 
 class LecturesMixin:
-    def build_today_lectures(self):
+    def build_today_lectures(self, parent_layout=None):
         from .ui import label, button, row
         self.reminders = LectureReminders(self.activity.path.parent)
         self._lecture_signature = None
@@ -19,7 +19,7 @@ class LecturesMixin:
         self._lecture_popups = []
         self._lecture_refresh_job = None
         self.jobs.ended.connect(self.lecture_information_finished)
-        layout = self.page('今日讲座', '人文与科研 · 今日安排、听讲进度与到场提醒（北京时间）')
+        layout = parent_layout or self.page('今日讲座', '人文与科研 · 今日安排、听讲进度与到场提醒（北京时间）')
         layout.addLayout(row(button('刷新讲座与听讲记录', self.refresh_lecture_information, True),
                              button('测试弹窗', self.test_lecture_popup)))
         self.lecture_progress = {}

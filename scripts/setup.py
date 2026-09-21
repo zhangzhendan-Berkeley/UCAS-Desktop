@@ -113,6 +113,33 @@ def prepare_lecture(repo):
         target.write_bytes(content)
 
 
+def prepare_science_lecture(repo):
+    """Add the local science-lecture selection policy after upstream patches."""
+    files = {
+        'src/types.ts': [
+            ('  humanityLectureUrl: string;\n', '  humanityLectureUrl: string;\n  scienceMode?: boolean;\n  scienceKeywords?: string[];\n  onePerStartTime?: boolean;\n'),
+        ],
+        'src/config.ts': [
+            ('    .optional()\n  runtime:', '    .optional()\n  ,scienceMode: z.boolean().optional()\n  ,onePerStartTime: z.boolean().optional()\n  ,scienceKeywords: z.array(z.string()).optional()\n  runtime:'),
+            ('    humanityLectureUrl: parsedFile.targets?.lectureUrl ?? defaultLectureUrl,\n', '    humanityLectureUrl: parsedFile.targets?.lectureUrl ?? defaultLectureUrl,\n    scienceMode: parsedFile.scienceMode ?? false,\n    onePerStartTime: parsedFile.onePerStartTime ?? false,\n    scienceKeywords: parsedFile.scienceKeywords ?? [],\n'),
+        ],
+        'src/workflow.ts': [
+            ('import { registerLecture } from "./register.js";\n', 'import { registerLecture } from "./register.js";\nimport { parseLectureStart } from "./time-window.js";\n'),
+            ('    const decisions = decideLectures(\n      snapshot.lectures.filter(lecture => isYanqiLocation(lecture.location)),\n', '    let eligibleLectures = snapshot.lectures.filter(lecture => isYanqiLocation(lecture.location));\n    if (config.scienceMode && config.onePerStartTime) {\n      const groups = new Map<string, typeof eligibleLectures>();\n      for (const lecture of eligibleLectures) {\n        const parsed = lecture.startTimeText ? parseLectureStart(lecture.startTimeText) : null;\n        const key = parsed ? parsed.date.toISOString().slice(0, 16) : lecture.id;\n        const group = groups.get(key) ?? []; group.push(lecture); groups.set(key, group);\n      }\n      const keywords = (config.scienceKeywords ?? []).map(x => x.toLowerCase());\n      eligibleLectures = [...groups.values()].map(group => group.sort((a, b) => {\n        const score = (x: typeof a) => keywords.reduce((n, k) => n + (x.title.toLowerCase().includes(k) ? 1 : 0), 0);\n        return score(b) - score(a);\n      })[0]);\n    }\n    const decisions = decideLectures(\n      eligibleLectures,\n'),
+        ],
+    }
+    for relative, replacements in files.items():
+        path = repo / relative
+        text = path.read_text(encoding='utf-8')
+        for old, new in replacements:
+            if new in text:
+                continue
+            if old not in text:
+                raise RuntimeError(f'科研讲座适配点不存在，拒绝修改 {relative}')
+            text = text.replace(old, new, 1)
+        path.write_text(text, encoding='utf-8')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--with-external-modules', action='store_true',
@@ -143,6 +170,7 @@ def main():
         repo = checkout(module)
         if module['id'] == 'lecture':
             prepare_lecture(repo)
+            prepare_science_lecture(repo)
         if module['id'] in ('mooc', 'lecture'):
             run([npm, 'ci', '--no-audit', '--no-fund'], repo)
         if module['id'] == 'mooc':
