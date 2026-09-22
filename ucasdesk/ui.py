@@ -156,7 +156,7 @@ class Window(LecturesMixin, DashboardMixin, QMainWindow):
         self.nav.setObjectName('navigation')
         self.nav.addItems(['概览', '课程签到', '人文/科研讲座', '国科大在线', '选课规划', '自动选课', '任务与日志', '设置与更新', '个人信息'])
         side.addWidget(self.nav)
-        self.runtime_hint = label('本地运行 · v0.5.0\n关闭窗口后托盘运行\n右键托盘可退出程序', 'sideText')
+        self.runtime_hint = label('本地运行 · v0.5.1\n关闭窗口后托盘运行\n右键托盘可退出程序', 'sideText')
         side.addWidget(self.runtime_hint)
         horizontal.addWidget(sidebar)
         self.pages = QStackedWidget()

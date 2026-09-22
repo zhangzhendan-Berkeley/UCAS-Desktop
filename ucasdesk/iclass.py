@@ -113,7 +113,7 @@ class IClass:
             result = data.get('result') or []
             if not isinstance(result, list):
                 raise RuntimeError('课表数据结构发生变化。')
-            fields = ('id', 'uuid', 'courseName', 'teacherName', 'classBeginTime', 'classEndTime', 'signStatus', 'classroom', 'location', 'classRoomName', 'teachingBuildingName')
+            fields = ('id', 'uuid', 'courseName', 'teacherName', 'classBeginTime', 'classEndTime', 'signStatus', 'classroom', 'location', 'classRoomName', 'classroomName', 'teachBuildName', 'teachingBuildingName')
             return [{key: str(c.get(key, '')) for key in fields} for c in result]
 
     def server_time(self):

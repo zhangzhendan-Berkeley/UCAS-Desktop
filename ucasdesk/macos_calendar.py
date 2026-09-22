@@ -1,8 +1,11 @@
-"""macOS Calendar integration through Calendar.app's AppleScript interface."""
+"""Export a date range for manual import into the user's iCloud calendar."""
 from datetime import datetime, timedelta
+from pathlib import Path
+import json
 import subprocess
+from zoneinfo import ZoneInfo
 import sys
-from .calendar_export import _date_time
+from .calendar_export import _date_time, write_ics, course_location
 from .lecture_visibility import calendar_lecture
 
 def sync_range(activity, course_account, sep_account, calendar_name='UCAS Desktop', days=1, offset=0, courses=None):
@@ -16,7 +19,7 @@ def sync_range(activity, course_account, sep_account, calendar_name='UCAS Deskto
         start = _date_time(item.get('start') or item.get('classBeginTime') or item.get('time'))
         if start and target <= start.date() < until:
             end = _date_time(item.get('end') or item.get('classEndTime')) or start + timedelta(minutes=50)
-            events.append((start, end, item.get('courseName') or item.get('name') or '课程', item.get('classroom') or item.get('location') or item.get('classRoomName') or '学校未提供地点'))
+            events.append((start, end, item.get('courseName') or item.get('name') or '课程', course_location(item)))
     for kind, label in (('humanity', '人文讲座'), ('science', '科研讲座')):
         rows = activity.get_snapshot(sep_account, 'calendar-' + kind).get('payload', {}).get('rows', [])
         for item in rows:
@@ -26,19 +29,22 @@ def sync_range(activity, course_account, sep_account, calendar_name='UCAS Deskto
                 end = _date_time(item.get('end'))
                 if not end or end <= start: continue
                 events.append((start, end, f'{label} · {item.get("title") or "未命名"}', item.get('location') or ''))
-    def esc(s): return str(s or '').replace('\\', '\\\\').replace('"', '\\"').replace('\n', ' ')
-    lines = [f'set targetCalendar to missing value', f'tell application "Calendar"', f'  if not (exists calendar "{calendar_name}") then make new calendar with properties {{name:"{calendar_name}"}}', f'  set targetCalendar to calendar "{calendar_name}"']
-    for start, end, title, location in events:
-        lines.append(f'  set startDate to current date\n  set day of startDate to 1\n  set year of startDate to {start.year}\n  set month of startDate to {start.strftime("%B")}\n  set day of startDate to {start.day}\n  set time of startDate to ({start.hour} * hours + {start.minute} * minutes)')
-        lines.append(f'  set endDate to current date\n  set day of endDate to 1\n  set year of endDate to {end.year}\n  set month of endDate to {end.strftime("%B")}\n  set day of endDate to {end.day}\n  set time of endDate to ({end.hour} * hours + {end.minute} * minutes)')
-        lines.append(f'  if not (exists (events of targetCalendar whose summary is "{esc(title)}" and start date is startDate)) then')
-        lines.append(f'  make new event at end of events of targetCalendar with properties {{summary:"{esc(title)}", start date:startDate, end date:endDate, location:"{esc(location)}", description:"UCAS Desktop 自动同步"}}')
-        lines.append('  end if')
-    lines.append('end tell')
-    result = subprocess.run(['osascript'], input='\n'.join(lines), text=True, capture_output=True, timeout=120)
-    if result.returncode:
-        raise RuntimeError(result.stderr.strip() or '写入 macOS 日历失败')
-    return len(events), f'已写入 macOS 日历：{target.isoformat()} 起 {days} 天，共 {len(events)} 项'
+    filename = 'UCAS.ics' if days > 1 else f'UCAS-{target.isoformat()}.ics'
+    path, count = write_ics(events, Path.home() / 'Documents' / filename)
+    payload = [{'start': start.replace(tzinfo=ZoneInfo('Asia/Shanghai')).timestamp(),
+                'end': end.replace(tzinfo=ZoneInfo('Asia/Shanghai')).timestamp(),
+                'title': title, 'location': location}
+               for start, end, title, location in events]
+    try:
+        result = subprocess.run(
+            ['/usr/bin/swift', str(Path(__file__).resolve().parents[1] / 'scripts/icloud_calendar.swift')],
+            input=json.dumps(payload, ensure_ascii=False), text=True, capture_output=True, timeout=120)
+        if result.returncode == 0:
+            return count, f'已提交到 iCloud 的 UCAS 日历，共检查 {count} 项（重复事件跳过）；备份：{path}'
+        reason = '请在系统设置中授予日历完全访问权限' if 'access denied' in result.stderr else '未能写入，请确认 iCloud 下存在唯一且可写的 UCAS 日历及 Swift 工具可用'
+    except (OSError, subprocess.TimeoutExpired):
+        reason = '日历访问超时或 Swift 工具不可用'
+    return count, f'{reason}。已导出 {count} 项至 {path}，尚未确认同步到 iCloud'
 
 
 def sync_tomorrow(activity, course_account, sep_account, calendar_name='UCAS Desktop'):

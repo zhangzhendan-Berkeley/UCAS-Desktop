@@ -4,9 +4,9 @@
 
 面向国科大集中教学场景的 **Windows / macOS / Linux 桌面集成工具**：把轻新课堂签到、讲座预约、选课规划、选课自动化及国科大在线视频/文档任务放在同一界面，支持系统托盘后台运行。
 
-## v0.5.0：macOS 日历与讲座自动化更新
+## v0.5.1：iCloud 日历地点同步
 
-**[下载 v0.5.0 源码版](https://github.com/zhangzhendan-Berkeley/UCAS-Desktop/releases/tag/v0.5.0)**。本次提供源码包，不含独立 macOS 安装包或新版 Windows 便携包。
+**[下载 v0.5.1 源码版](https://github.com/zhangzhendan-Berkeley/UCAS-Desktop/releases/tag/v0.5.1)**。本次提供源码包，不含独立 macOS 安装包或新版 Windows 便携包。
 
 - 人文与科研讲座启用计划后，每小时 01 分查询并尝试报名；保留雁栖湖筛选、科研同开始时间单选和 AI 关键词优先。
 - 科研讲座“部门”为本科部时，不显示、不报名、不导入日历，提交前再次核对。
@@ -67,7 +67,7 @@ Linux 账号通过已解锁的 Secret Service / KWallet 系统密钥环保存；
 
 ## macOS 新版本使用说明（主分支）
 
-macOS 用户建议直接使用主分支源码。当前版本已包含今日讲座日程、到场提醒、科研讲座每小时自动报名、菜单栏后台运行以及 Edge 优先的浏览器选择；这些更新已包含在 v0.5.0 源码发布中。
+macOS 用户建议直接使用主分支源码。当前版本已包含今日讲座日程、到场提醒、科研讲座每小时自动报名、菜单栏后台运行以及 Edge 优先的浏览器选择；这些更新已包含在 v0.5.1 源码发布中。
 
 ```bash
 git clone https://github.com/zhangzhendan-Berkeley/UCAS-Desktop.git

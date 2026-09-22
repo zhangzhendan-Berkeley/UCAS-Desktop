@@ -27,7 +27,9 @@ class DashboardMixin:
         layout.setSpacing(18)
         self.home_status = label('', 'muted')
         self.refresh_all_button = button('一键刷新全部信息', self.refresh_all, True)
-        self.calendar_import_button = button('导入未来 7 天到 macOS 日历', self.import_calendar_week)
+        self.calendar_import_button = button('同步未来 7 天到 iCloud UCAS', self.import_calendar_week)
+        import sys
+        self.calendar_import_button.setVisible(sys.platform == 'darwin')
         toolbar = QHBoxLayout()
         toolbar.addWidget(self.home_status, 1)
         toolbar.addWidget(button('自定义概览', self.customize_home))
