@@ -1,5 +1,6 @@
 """Shared SEP login and read-only enrollment extraction for Selenium adapters."""
 import re
+import json
 import time
 from urllib.parse import urlsplit, urljoin
 from datetime import datetime
@@ -21,6 +22,7 @@ def logged_in(url):
 
 
 def login_sep(driver, account, open_courses=False, timeout=600):
+    driver.minimize_window()
     driver.get(SEP)
     wait = WebDriverWait(driver, 20)
     if not logged_in(driver.current_url):
@@ -29,13 +31,24 @@ def login_sep(driver, account, open_courses=False, timeout=600):
         password = driver.find_element(By.ID, 'pwd1')
         password.clear(); password.send_keys(account['password'])
         captcha = driver.find_elements(By.CSS_SELECTOR, "input#certCode1:not([type=hidden]),input[name=certCode1]:not([type=hidden]),input#certCode:not([type=hidden])")
-        if any(element.is_displayed() for element in captcha):
+        needs_manual = any(element.is_displayed() for element in captcha)
+        revealed = False
+        if needs_manual:
+            driver.set_window_rect(width=1100, height=800)
+            revealed = True
+            print(json.dumps({"event":"auth.manual-captcha-required"}), flush=True)
             print('SEP 需要验证码：已填入账号密码，请在浏览器输入验证码并点击登录，完成后自动继续，最多等待 10 分钟。', flush=True)
         else:
             driver.find_element(By.ID, 'sb1').click()
             print('已填入个人信息页中的 SEP 账号；如出现验证码/邮箱验证，请在浏览器完成，最多等待 10 分钟。', flush=True)
         deadline = time.monotonic() + timeout
         while not logged_in(driver.current_url):
+            if not revealed:
+                verification = driver.execute_script("""return /邮箱验证|验证邮箱|邮件验证码|新设备|安全验证/.test(document.body.innerText) || [...document.querySelectorAll('input#certCode1,input#certCode')].some(e=>e.type!=='hidden' && e.getClientRects().length);""")
+                if verification or '/user/userVisit' in driver.current_url:
+                    driver.set_window_rect(width=1100, height=800)
+                    revealed = True
+                    print(json.dumps({"event":"auth.manual-verification-required"}), flush=True)
             # Inspect only explicit error widgets. Never log portal body/profile data.
             messages = driver.execute_script("""return [...document.querySelectorAll('#loginError,#messageBoxError,.alert-danger,.alert-error,.error')]
                 .filter(e=>e.getClientRects().length).map(e=>e.textContent).join(' ');""")
@@ -44,6 +57,7 @@ def login_sep(driver, account, open_courses=False, timeout=600):
             if time.monotonic() > deadline:
                 raise RuntimeError('SEP 登录未完成，可能需要验证码或邮箱验证；未判定密码正确。')
             time.sleep(1)
+    driver.minimize_window()
     if not open_courses:
         return
     links = wait.until(lambda d: d.find_elements(By.CSS_SELECTOR, 'a[href*="/portal/site/524/2412"]') or
@@ -54,7 +68,7 @@ def login_sep(driver, account, open_courses=False, timeout=600):
     if href.startswith('http:'):
         href = 'https:' + href[5:]
     # Clicking preserves the portal Referer and signed SSO flow.
-    driver.execute_script("arguments[0].href=arguments[1];arguments[0].click();", links[0], href)
+    driver.execute_script("arguments[0].target='_self';arguments[0].href=arguments[1];arguments[0].click();", links[0], href)
     def course_window(d):
         for handle in d.window_handles:
             d.switch_to.window(handle)
@@ -63,6 +77,7 @@ def login_sep(driver, account, open_courses=False, timeout=600):
                 return True
         return False
     wait.until(course_window)
+    driver.minimize_window()
 
 
 def parse_course_tables(tables):

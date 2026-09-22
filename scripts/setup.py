@@ -90,7 +90,7 @@ def prepare_mooc(repo):
 
 def prepare_lecture(repo):
     patches = [ROOT / 'patches' / name for name in
-               ('lecture-local.patch', 'lecture-sep-workbench.patch', 'lecture-table.patch', 'lecture-campus.patch', 'lecture-browser.patch', 'lecture-captcha-runtime.patch', 'lecture-department.patch')]
+               ('lecture-local.patch', 'lecture-sep-workbench.patch', 'lecture-table.patch', 'lecture-campus.patch', 'lecture-browser.patch', 'lecture-captcha-runtime.patch', 'lecture-department.patch', 'lecture-background.patch')]
     first_missing = 0
     for index in reversed(range(len(patches))):
         reverse = subprocess.run(['git', 'apply', '--ignore-space-change', '--reverse', '--check', str(patches[index])],

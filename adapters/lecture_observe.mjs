@@ -1,3 +1,4 @@
+import { backgroundArgs } from '../vendor/ucas-humanity-lecture-bot/dist/src/background.js';
 import { chromium } from '../vendor/ucas-humanity-lecture-bot/node_modules/playwright/index.mjs';
 import { existsSync } from 'node:fs';
 import { ensureAuthenticated } from '../vendor/ucas-humanity-lecture-bot/dist/src/login.js';
@@ -12,11 +13,11 @@ export async function observeAndBook(config, logger, dir, payload, runAutomation
   let snapshot;
   let browser;
   try {
-    browser = await chromium.launch({ ...browserLaunchOptions(), headless: true });
+    browser = await chromium.launch({ ...browserLaunchOptions(), args: backgroundArgs, headless: false });
     const statePath = process.env.UCAS_STORAGE_STATE;
     const context = await browser.newContext({ storageState: statePath && existsSync(statePath) ? statePath : undefined });
     const page = await context.newPage();
-    await ensureAuthenticated(page, { ...config, headless: true }, logger);
+    await ensureAuthenticated(page, { ...config, headless: false }, logger);
     snapshot = await extractLectureSnapshot(page);
     console.log(JSON.stringify({event:'lecture.calendar', kind:'humanity', scope:'current-page',
       rows:snapshot.lectures.map(row=>({title:row.title,time:row.startTimeText,location:row.location}))}));
@@ -50,7 +51,7 @@ export async function observeAndBook(config, logger, dir, payload, runAutomation
   // Persist before any write: errors/crashes cannot silently replay a submission next slot.
   history.bookingPending = true;
   saveHistory(dir, history);
-  const summary = await runAutomation({ ...config, headless: true, dryRun: false }, logger);
+  const summary = await runAutomation({ ...config, headless: false, dryRun: false }, logger);
   console.log(JSON.stringify({ event: 'lecture.booking', attempts: summary.attempts, stopReason: summary.stopReason }));
   if (summary.attempts.some(a => a.outcome === 'unknown')) {
     throw new Error('存在报名结果不明确的讲座，自动报名已暂停；后续定点观察继续。');

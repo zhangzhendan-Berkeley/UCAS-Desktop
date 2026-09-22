@@ -1,0 +1,94 @@
+--- a/src/login.ts
++++ b/src/login.ts
+@@ -1,4 +1,5 @@
+ import type { Page } from "playwright";
++import { backgroundSep, revealSep } from "./background.js";
+ import type { AppConfig } from "./types.js";
+ import { Logger } from "./log.js";
+ import { captchaIsVisible, refreshCaptcha, solveCaptcha } from "./captcha.js";
+@@ -19,6 +20,7 @@
+ ];
+ 
+ export async function ensureAuthenticated(page: Page, config: AppConfig, logger: Logger): Promise<void> {
++  await backgroundSep(page, config.headless);
+   await page.goto(config.humanityLectureUrl, { waitUntil: "domcontentloaded", referer: page.url().startsWith("http") ? page.url() : undefined });
+   await page.waitForTimeout(1000);
+ 
+@@ -96,13 +98,13 @@
+ 
+ async function waitForManualCaptchaLogin(page: Page, config: AppConfig, logger: Logger): Promise<void> {
+   if (config.headless) throw new Error("验证码需要人工完成，请关闭无头模式后重试；未判定密码错误。");
+-  await page.bringToFront();
++  await revealSep(page);
+   logger.warn("auth.manual-captcha-required", { timeoutMs: manualVerificationWaitMs });
+   console.log("验证码自动识别未完成，请在已打开的 SEP 浏览器中填写验证码并点击登录；最多等待 10 分钟，完成后自动继续查询。");
+   const deadline = Date.now() + manualVerificationWaitMs;
+   while (Date.now() < deadline) {
+     if (page.isClosed()) throw new Error("验证窗口已关闭，请重新刷新并完成登录。");
+-    if (!(await isLoginPage(page))) return;
++    if (!(await isLoginPage(page))) { await backgroundSep(page, false); return; }
+     await page.waitForTimeout(500);
+   }
+   throw new Error("等待验证码登录超时，请重新刷新后完成验证；未判定密码错误。");
+@@ -194,6 +196,8 @@
+     );
+   }
+ 
++  const verificationPage = page.context().pages().find(p => p.url() === initialSurface.url) ?? page;
++  await revealSep(verificationPage);
+   logger.info("auth.manual-verification-wait", {
+     timeoutMs: manualVerificationWaitMs
+   });
+@@ -204,6 +208,7 @@
+ 
+     const activeSurface = await findManualVerificationSurface(page);
+     if (!activeSurface) {
++      await backgroundSep(verificationPage, false);
+       logger.info("auth.manual-verification-cleared", {
+         url: safeLocation(page.url())
+       });
+--- a/src/workflow.ts
++++ b/src/workflow.ts
+@@ -1,5 +1,6 @@
+ import { isYanqiLocation } from "./campus.js";
+ import { chromium } from "playwright";
++import { backgroundArgs } from "./background.js";
+ import { existsSync } from "node:fs";
+ import type {
+   AppConfig,
+@@ -67,6 +68,7 @@
+ ): Promise<RunSummary> {
+   const browser = await chromium.launch({
+     headless: config.headless,
++    args: config.headless ? [] : backgroundArgs,
+     executablePath: process.env.UCAS_BROWSER_EXECUTABLE,
+     channel: process.env.UCAS_BROWSER_CHANNEL || "msedge"
+   });
+--- /dev/null
++++ b/src/background.ts
+@@ -0,0 +1,25 @@
++import type { Page, BrowserContext } from "playwright";
++
++export const backgroundArgs = ["--start-minimized", "--disable-background-timer-throttling", "--disable-renderer-backgrounding"];
++const watched = new WeakSet<BrowserContext>();
++export async function setSepWindow(page: Page, visible: boolean): Promise<void> {
++  if (page.isClosed()) return;
++  const session = await page.context().newCDPSession(page);
++  try {
++    const { windowId } = await session.send("Browser.getWindowForTarget");
++    await session.send("Browser.setWindowBounds", {windowId, bounds:{windowState:visible ? "normal" : "minimized"}});
++    if (visible) await page.bringToFront();
++  } finally { await session.detach(); }
++}
++export async function backgroundSep(page: Page, headless: boolean): Promise<void> {
++  if (headless) return;
++  const context=page.context();
++  if (!watched.has(context)) {
++    watched.add(context);
++    context.on("page", child => { setSepWindow(child,false).catch(()=>{}); });
++  }
++  await setSepWindow(page,false);
++}
++export async function revealSep(page: Page): Promise<void> {
++  await setSepWindow(page,true);
++}

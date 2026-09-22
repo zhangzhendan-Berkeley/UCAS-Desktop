@@ -76,6 +76,9 @@ jobs:
           node tests/lecture_attendance_smoke.mjs
           node tests/lecture_captcha_smoke.mjs
           ${{ matrix.python }} tests/lecture_patch_smoke.py
+      - name: Windows SEP background window test
+        if: runner.os == 'Windows'
+        run: node tests/sep_background_smoke.mjs
       - name: Native macOS Keychain test
         if: runner.os == 'macOS'
         run: ${{ matrix.python }} scripts/keychain_self_test.py

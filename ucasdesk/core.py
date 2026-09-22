@@ -275,6 +275,9 @@ def browser_options(profile=None):
     options = webdriver.EdgeOptions() if browser_kind() == 'edge' else webdriver.ChromeOptions()
     options.binary_location = str(browser_path())
     options.add_argument('--no-first-run')
+    options.add_argument('--start-minimized')
+    options.add_argument('--disable-background-timer-throttling')
+    options.add_argument('--disable-renderer-backgrounding')
     options.page_load_strategy = 'eager'
     if profile:
         options.add_argument('--user-data-dir=' + str(profile))
@@ -294,7 +297,14 @@ def driver_service(log_path, **kwargs):
 def browser_driver(options, service):
     from selenium import webdriver
     factory = webdriver.Edge if browser_kind() == 'edge' else webdriver.Chrome
-    return factory(options=options, service=service)
+    driver = factory(options=options, service=service)
+    try:
+        if not any('--headless' in arg for arg in options.arguments):
+            driver.minimize_window()
+        return driver
+    except Exception:
+        driver.quit()
+        raise
 
 
 def child_env(extra=None):
