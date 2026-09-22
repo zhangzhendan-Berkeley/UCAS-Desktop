@@ -96,13 +96,14 @@ export async function readScienceSchedule(page) {
     const cells = [...row.querySelectorAll('td')].map(td => (td.textContent || '').replace(/\s+/g, ' ').trim());
     const headers = [...(row.closest('table')?.querySelectorAll('th') || [])].map(th => th.textContent.trim());
     const status = cells.filter((_, i) => /报名|预约|操作|状态/.test(headers[i] || '')).join(' ');
-    return {title: cells[headers.indexOf('讲座名称')], status};
+    const departmentIndex = headers.findIndex(h => /^(部门|所属部门|主办部门)$/.test(h.replace(/\s+/g, '')));
+    return {department: cells[departmentIndex] || '', title: cells[headers.indexOf('讲座名称')], time: cells[headers.indexOf('讲座时间')], location: cells[headers.indexOf('讲座地点')], status, rowText: cells.join(' ')};
   }));
   return rows.map(row => {
-    const matches = statuses.filter(s => s.title === row.title);
+    const matches = statuses.filter(s => s.title === row.title && s.time === row.time && s.location === row.location);
     const status = matches.length === 1 ? matches[0].status : '';
-    const registered = /已报名|已预约|取消报名|取消预约|退选/.test(status) && !/未报名|未预约/.test(status);
+    const registered = /已(?:经)?报名(?:过)?|已(?:经)?预约(?:过)?|取消报名|取消预约|退选/.test(status) && !/未报名|未预约/.test(status);
     const free = /无需报名|不需报名|无需预约|免预约|免报名/.test(status);
-    return {...row, registrationStatus: registered ? 'registered' : free ? 'not-required' : 'unknown-or-unregistered'};
+    return {...row, department: matches.length === 1 ? matches[0].department : '', registrationText: status, rowText: matches.length === 1 ? matches[0].rowText : '', registrationStatus: registered ? 'registered' : free ? 'not-required' : 'unknown-or-unregistered'};
   });
 }

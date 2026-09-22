@@ -70,6 +70,7 @@ jobs:
             ${{ matrix.python }} tests/sep_browser_smoke.py
           fi
           node tests/lecture_portal_smoke.mjs
+          node tests/lecture_department_smoke.mjs
           node tests/lecture_campus_smoke.mjs
           node tests/lecture_pagination_smoke.mjs
           node tests/lecture_attendance_smoke.mjs

@@ -71,6 +71,17 @@ class Tests(unittest.TestCase):
             self.assertEqual(result['success'], expected)
             self.assertEqual(transport.calls[-1][1]['params']['timestamp'], 1789499997000)
 
+    def test_timetable_empty_day_and_real_errors(self):
+        for reply, empty in [({'STATUS': '2'}, True), ({'STATUS': 2, 'result': []}, True),
+                             ({'STATUS': '1'}, False), ({'STATUS': '2', 'result': {'error': 'bad'}}, False)]:
+            transport = Transport([{'STATUS': '0', 'result': {'sessionId': 'secret', 'id': '99'}}, reply])
+            client = IClass('user', 'pass', transport)
+            if empty:
+                self.assertEqual(client.query('20260926'), [])
+                self.assertEqual(client.session_id, 'secret')
+            else:
+                with self.assertRaises(RuntimeError): client.query('20260926')
+
     def test_logs_remove_credentials(self):
         text = redact('password=hidden sessionId=secret enc=abcdef my-password', ['my-password'])
         for value in ('hidden', 'secret', 'abcdef', 'my-password'):

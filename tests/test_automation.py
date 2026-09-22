@@ -42,7 +42,8 @@ class AutomationTests(unittest.TestCase):
     def test_clock_alignment_grace_and_midnight(self):
         self.assertIsNone(lecture_slot(datetime(2026, 9, 16, 8, 0, 59), [8]))
         self.assertEqual(lecture_slot(datetime(2026, 9, 16, 8, 1), [8]), '2026-09-16T08:01')
-        self.assertIsNotNone(lecture_slot(datetime(2026, 9, 16, 8, 32, 59), [8]))
+        self.assertIsNotNone(lecture_slot(datetime(2026, 9, 16, 8, 2, 59), [8]))
+        self.assertIsNone(lecture_slot(datetime(2026, 9, 16, 8, 31), [8]))
         self.assertIsNone(lecture_slot(datetime(2026, 9, 16, 8, 33), [8]))
         self.assertIsNone(lecture_slot(datetime(2026, 9, 16, 9, 1), [8]))
         self.assertEqual(next_lecture_slot(datetime(2026, 9, 16, 23, 32), [0]), datetime(2026, 9, 17, 0, 1))
@@ -95,6 +96,30 @@ class AutomationTests(unittest.TestCase):
             self.assertEqual(len(jobs.calls), 1)
             restarted.disable('lecture')
             self.assertFalse(restarted.enabled('lecture'))
+
+    def test_science_hourly_booking_restart_and_shared_session(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            jobs = Jobs()
+            engine = Automation(jobs, Vault(), directory=Path(tmp))
+            engine.timer.stop()
+            engine.save('science', {'enabled': True})
+            with patch.object(Path, 'exists', return_value=True):
+                engine.tick(datetime(2026, 9, 16, 7, 1))
+                self.assertEqual(len(jobs.calls), 1)
+                self.assertFalse(jobs.calls[0][-1]['preview'])
+                restarted = Automation(jobs, Vault(), directory=Path(tmp))
+                restarted.timer.stop()
+                restarted.tick(datetime(2026, 9, 16, 7, 2))
+                restarted.tick(datetime(2026, 9, 16, 7, 31))
+                self.assertEqual(len(jobs.calls), 1)
+                jobs.active['humanity'] = {'module': 'lecture-clock'}
+                restarted.tick(datetime(2026, 9, 16, 8, 1))
+                self.assertEqual(len(jobs.calls), 1)
+                jobs.active.clear()
+                restarted.tick(datetime(2026, 9, 16, 8, 2))
+                self.assertEqual(len(jobs.calls), 2)
+                restarted.tick(datetime(2026, 9, 16, 9, 5))
+                self.assertEqual(len(jobs.calls), 2)
 
     def test_daily_filters_ended_signed_and_duplicate_courses(self):
         course = {'id': '1234567', 'classBeginTime': '2026-09-16 10:00:00',

@@ -209,7 +209,8 @@ class DashboardMixin:
                             courses.extend(client.query(date_text))
                         except Exception as second_error:
                             failures.append(f'{day.isoformat()}: {second_error}')
-                self.activity.snapshot(course_scope, 'calendar-courses', {'courses': courses})
+                if not failures:
+                    self.activity.snapshot(course_scope, 'calendar-courses', {'courses': courses})
                 if not courses and failures:
                     raise RuntimeError('未来 7 天课表均查询失败：' + '；'.join(failures))
                 result = sync_range(self.activity, course_scope, sep_scope, days=7, courses=courses)

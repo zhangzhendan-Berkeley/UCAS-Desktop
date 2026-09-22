@@ -205,7 +205,7 @@ class LecturesMixin:
             start=start_time(item)
             body.addWidget(label(f'{KINDS[kind][0]}  ·  {start:%m-%d %H:%M}\n{item.get("title","")}\n{item.get("location") or "地点未提供"}'))
         scroll.setWidget(content);box.addWidget(scroll)
-        def open_list():self.nav.setCurrentRow(9);self.show_window();popup.close()
+        def open_list():self.nav.setCurrentRow(2);self.show_window();popup.close()
         box.addLayout(row(button('查看今日讲座',open_list,True),button('知道了',popup.close)))
         self._lecture_popups.append(popup)
         popup.destroyed.connect(lambda:self._lecture_popups.remove(popup) if popup in self._lecture_popups else None)

@@ -119,12 +119,14 @@ def apply_patch_file(directory, patch_path):
 
 
 def prepare_lecture(root, directory):
-    for name in ('lecture-local.patch', 'lecture-sep-workbench.patch', 'lecture-table.patch', 'lecture-campus.patch', 'lecture-browser.patch', 'lecture-captcha-runtime.patch'):
+    for name in ('lecture-local.patch', 'lecture-sep-workbench.patch', 'lecture-table.patch', 'lecture-campus.patch', 'lecture-browser.patch', 'lecture-captcha-runtime.patch', 'lecture-department.patch'):
         apply_patch_file(directory, root / 'patches' / name)
     for source, destination in [('lecture-register.test.ts', 'tests/register.test.ts'),
                                 ('lecture-portal.ts', 'src/portal.ts'), ('lecture-portal.test.ts', 'tests/portal.test.ts'),
                                 ('lecture-campus.ts', 'src/campus.ts'), ('lecture-campus.test.ts', 'tests/campus.test.ts')]:
         shutil.copy2(root / 'patches' / source, directory / destination)
+    from scripts.setup import prepare_science_lecture
+    prepare_science_lecture(directory)
 
 
 def install_module(root, module, manifest, log=print):

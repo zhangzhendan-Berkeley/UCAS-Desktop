@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import re
 from .core import DATA
-from .lecture_visibility import visible_lecture
+from .lecture_visibility import calendar_lecture
 
 def _esc(value):
     return str(value or '').replace('\\', '\\\\').replace(';', '\\;').replace(',', '\\,').replace('\n', '\\n')
@@ -23,7 +23,7 @@ def export_ics(activity, course_account, sep_account, path=None):
     for kind, label in (('humanity', '人文讲座'), ('science', '科研讲座')):
         snapshot = activity.get_snapshot(sep_account, 'calendar-' + kind).get('payload', {})
         for item in snapshot.get('rows', []):
-            if not visible_lecture(kind, item): continue
+            if not calendar_lecture(kind, item): continue
             start = _date_time(item.get('time') or item.get('start') or item.get('startTime'))
             if not start: continue
             events.append((start, start + timedelta(hours=2), f'{label} · {item.get("title") or "未命名"}', item.get('location') or ''))

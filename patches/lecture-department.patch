@@ -1,0 +1,37 @@
+--- a/src/lecture-page.ts
++++ b/src/lecture-page.ts
+@@ -15,6 +15,7 @@
+   rowIndex: number;
+   titleCell: string;
+   locationCell: string;
++  departmentCell: string;
+   idCandidate: string;
+   cells: string[];
+   actionTexts: string[];
+@@ -29,6 +30,9 @@
+     const locationIndex = Array.from(document.querySelectorAll("table th")).findIndex(th => /^(讲座地点|地点|上课地点)$/.test(th.textContent?.trim() ?? ""));
+     return rows.map((row, rowIndex) => {
+       const dataCells = row.querySelectorAll("td");
++      const headers = Array.from(row.closest("table")?.querySelectorAll("th") ?? []);
++      const departmentIndex = headers.findIndex(th => /^(部门|所属部门|主办部门)$/.test((th.textContent ?? "").replace(/\s+/g, "")));
++      const departmentCell = departmentIndex >= 0 ? (dataCells[departmentIndex]?.textContent ?? "").replace(/\s+/g, "") : "";
+       const titleCell = titleIndex >= 0 ? (dataCells[titleIndex]?.textContent ?? "").replace(/\s+/g, " ").trim() : "";
+       const locationCell = locationIndex >= 0 ? (dataCells[locationIndex]?.textContent ?? "").replace(/\s+/g, " ").trim() : "";
+       const cells = Array.from(dataCells)
+@@ -51,6 +55,7 @@
+         rowIndex,
+         titleCell,
+         locationCell,
++        departmentCell,
+         idCandidate,
+         cells,
+         actionTexts
+@@ -59,7 +64,7 @@
+   }, rowSelector);
+ 
+   return {
+-    lectures: rawRows.map(normalizeLectureRow).filter((row): row is LectureRecord => row !== null),
++    lectures: rawRows.filter(row => new URL(page.url()).pathname !== "/subject/lecture" || !row.departmentCell.includes("本科部")).map(normalizeLectureRow).filter((row): row is LectureRecord => row !== null),
+     quota: extractQuota(pageText),
+     pageText
+   };

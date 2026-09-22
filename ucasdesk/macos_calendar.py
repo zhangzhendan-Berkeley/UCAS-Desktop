@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 import subprocess
 import sys
 from .calendar_export import _date_time
-from .lecture_visibility import visible_lecture
+from .lecture_visibility import calendar_lecture
 
 def sync_range(activity, course_account, sep_account, calendar_name='UCAS Desktop', days=1, offset=0, courses=None):
     if sys.platform != 'darwin':
@@ -20,7 +20,7 @@ def sync_range(activity, course_account, sep_account, calendar_name='UCAS Deskto
     for kind, label in (('humanity', '人文讲座'), ('science', '科研讲座')):
         rows = activity.get_snapshot(sep_account, 'calendar-' + kind).get('payload', {}).get('rows', [])
         for item in rows:
-            if not visible_lecture(kind, item): continue
+            if not calendar_lecture(kind, item): continue
             start = _date_time(item.get('time') or item.get('start') or item.get('startTime'))
             if start and target <= start.date() < until:
                 end = _date_time(item.get('end'))

@@ -7,7 +7,7 @@ import sys
 
 def lecture_slot(now, hours):
     """Only the current slot, with a two-minute wake-up grace; never replay a backlog."""
-    for minute in (31, 1):
+    for minute in (1,):
         slot = now.replace(minute=minute, second=0, microsecond=0)
         if slot.hour in hours and 0 <= (now - slot).total_seconds() < 120:
             return slot.isoformat(timespec='minutes')
@@ -17,7 +17,7 @@ def lecture_slot(now, hours):
 def next_lecture_slot(now, hours):
     for offset in range(49):
         hour = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=offset)
-        for minute in (1, 31):
+        for minute in (1,):
             candidate = hour.replace(minute=minute)
             if candidate > now and candidate.hour in hours:
                 return candidate
@@ -105,26 +105,29 @@ class Automation(QObject):
             self.daily_started = today
             self.messages[kind] = f'{today} 已启动课表检查与定时签到；结果见任务日志'
         elif kind == 'science':
-            today = now.date().isoformat()
-            if now.hour < 8 or self.state.get('science_daily') == today or 'science-daily' in active:
+            slot = lecture_slot(now, list(range(24)))
+            if not slot or self.state.get('science_slot') == slot:
+                return
+            if active & {'lecture', 'lecture-clock', 'science-daily'}:
+                self.messages[kind] = '讲座模块仍在运行，本时点等待；超过 2 分钟后跳过'
                 return
             account = self.credentials(kind)
             if not (ROOT / 'vendor/ucas-humanity-lecture-bot/dist/src/workflow.js').exists():
                 raise ValueError('请先安装人文/科研讲座外部模块。')
-            self.state['science_daily'] = today
+            self.state['science_slot'] = slot
             write_json(self.state_path, self.state)
-            self.jobs.start('science-daily', f'每日 08:00 科研讲座报名 · {today}', NODE,
+            self.jobs.start('science-daily', f'科研讲座定点报名 · {slot}', NODE,
                             [ROOT / 'adapters/lecture.mjs'], account | {
                                 'action': 'science-book', 'lectureUrl': 'https://xkcts.ucas.ac.cn:8443/subject/lecture',
                                 'science': True, 'scienceMode': True, 'onePerStartTime': True,
                                 'scienceKeywords': ['人工智能', '机器学习', '深度学习', '神经网络', '大模型', '自然语言处理', '计算机视觉', '机器人', '具身智能'],
                                 'preview': False})
-            self.messages[kind] = f'{today} 已启动科研讲座报名；结果见任务日志'
+            self.messages[kind] = f'{slot} 已启动科研讲座报名；结果见任务日志'
         else:
             slot = lecture_slot(now, config.get('hours', list(range(24))))
             if not slot or self.state.get('lecture_slot') == slot:
                 return
-            if active & {'lecture', 'lecture-clock'}:
+            if active & {'lecture', 'lecture-clock', 'science-daily'}:
                 self.messages[kind] = '讲座模块仍在运行，本时点等待；超过 2 分钟后跳过'
                 return
             account = self.credentials(kind)
@@ -142,8 +145,9 @@ class Automation(QObject):
         if not self.enabled(kind):
             return '后台计划：未启用'
         message = self.messages.get(kind, '已保存；应用运行时自动执行')
-        if kind == 'lecture':
-            due = next_lecture_slot(datetime.now(), self.config[kind].get('hours', list(range(24))))
+        if kind in ('lecture', 'science'):
+            hours = self.config[kind].get('hours', list(range(24))) if kind == 'lecture' else list(range(24))
+            due = next_lecture_slot(datetime.now(), hours)
             if due:
                 message += ' · 下次 ' + due.strftime('%m-%d %H:%M')
         return message

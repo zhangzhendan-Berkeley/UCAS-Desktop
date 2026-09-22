@@ -25,12 +25,12 @@ with isolated_keychain(),tempfile.TemporaryDirectory() as tmp:
    w.account_fields['sep'][0].setText('fixture-student');w.account_fields['sep'][1].setText('fixture-password');w.save_profile('sep')
    account=scope(w.vault,'sep');now=now_beijing().replace(hour=9,minute=0,second=0,microsecond=0)
    for kind,title in [('humanity','美与文明：艺术中的时代记忆'),('science','从基础研究到科学前沿：探索未知的边界')]:
-    w.activity.snapshot(account,'calendar-'+kind,{'rows':[{'title':title,'start':(now+timedelta(minutes=15)).isoformat(),'end':(now+timedelta(hours=2)).isoformat(),'location':'雁栖湖校区 · 国际会议中心报告厅'}]})
+    w.activity.snapshot(account,'calendar-'+kind,{'rows':[{'title':title,'registrationStatus':'registered','department':'研究生学院','start':(now+timedelta(minutes=15)).isoformat(),'end':(now+timedelta(hours=2)).isoformat(),'location':'雁栖湖校区 · 国际会议中心报告厅'}]})
    w.activity.snapshot(account,'attendance',{'humanity':{'total':3,'valid':2,'hours':4},'science':{'total':2,'valid':2,'hours':5}})
-   w.nav.setCurrentRow(9)
+   w.nav.setCurrentRow(next(i for i in range(w.nav.count()) if w.nav.item(i).text() == '人文/科研讲座'))
    with patch('ucasdesk.lectures.now_beijing',return_value=now):
     w.refresh_today_lectures()
-    assert w.nav.currentItem().text()=='今日讲座'
+    assert w.nav.currentItem().text()=='人文/科研讲座'
     assert '还差 15 学时' in w.lecture_progress['science'][1].text()
     assert len(w.lecture_scroll.findChildren(QCheckBox))==2
     w.lecture_remind_enabled.setChecked(True);w.lecture_remind_minutes.setValue(25)

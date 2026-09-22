@@ -104,6 +104,9 @@ class IClass:
             self.login()
             data = self._request('GET', '/course/get_stu_course_sched.action',
                                  params={'id': self.user_id, 'dateStr': date}, headers={'sessionId': self.session_id})
+            # The timetable endpoint returns STATUS=2 with no result on empty days.
+            if str(data.get('STATUS')) == '2' and data.get('result') in (None, []):
+                return []
             if str(data.get('STATUS')) != '0':
                 self.session_id = None
                 raise RuntimeError('课表查询失败或登录已失效，请重新查询。')

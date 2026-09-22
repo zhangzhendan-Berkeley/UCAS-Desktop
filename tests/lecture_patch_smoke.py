@@ -13,5 +13,8 @@ with tempfile.TemporaryDirectory() as tmp:
     dest = Path(tmp)
     zipfile.ZipFile(io.BytesIO(raw)).extractall(dest)
     prepare_lecture(ROOT, dest)
+    assert 'scienceMode: z.boolean().optional()' in (dest / 'src/config.ts').read_text()
+    assert 'if (config.scienceMode && config.onePerStartTime)' in (dest / 'src/workflow.ts').read_text()
+    assert 'departmentCell.includes("本科部")' in (dest / 'src/lecture-page.ts').read_text()
     assert 'executablePath: process.env.UCAS_BROWSER_EXECUTABLE' in (dest / 'src/workflow.ts').read_text(encoding='utf-8')
 print('Portable strict patch chain: PASS')

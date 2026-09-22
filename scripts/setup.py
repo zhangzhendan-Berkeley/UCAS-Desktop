@@ -90,7 +90,7 @@ def prepare_mooc(repo):
 
 def prepare_lecture(repo):
     patches = [ROOT / 'patches' / name for name in
-               ('lecture-local.patch', 'lecture-sep-workbench.patch', 'lecture-table.patch', 'lecture-campus.patch', 'lecture-browser.patch', 'lecture-captcha-runtime.patch')]
+               ('lecture-local.patch', 'lecture-sep-workbench.patch', 'lecture-table.patch', 'lecture-campus.patch', 'lecture-browser.patch', 'lecture-captcha-runtime.patch', 'lecture-department.patch')]
     first_missing = 0
     for index in reversed(range(len(patches))):
         reverse = subprocess.run(['git', 'apply', '--ignore-space-change', '--reverse', '--check', str(patches[index])],
@@ -120,7 +120,7 @@ def prepare_science_lecture(repo):
             ('  humanityLectureUrl: string;\n', '  humanityLectureUrl: string;\n  scienceMode?: boolean;\n  scienceKeywords?: string[];\n  onePerStartTime?: boolean;\n'),
         ],
         'src/config.ts': [
-            ('    .optional()\n  runtime:', '    .optional()\n  ,scienceMode: z.boolean().optional()\n  ,onePerStartTime: z.boolean().optional()\n  ,scienceKeywords: z.array(z.string()).optional()\n  runtime:'),
+            ('const fileSchema = z.object({\n', 'const fileSchema = z.object({\n  scienceMode: z.boolean().optional(),\n  onePerStartTime: z.boolean().optional(),\n  scienceKeywords: z.array(z.string()).optional(),\n'),
             ('    humanityLectureUrl: parsedFile.targets?.lectureUrl ?? defaultLectureUrl,\n', '    humanityLectureUrl: parsedFile.targets?.lectureUrl ?? defaultLectureUrl,\n    scienceMode: parsedFile.scienceMode ?? false,\n    onePerStartTime: parsedFile.onePerStartTime ?? false,\n    scienceKeywords: parsedFile.scienceKeywords ?? [],\n'),
         ],
         'src/workflow.ts': [
@@ -133,6 +133,10 @@ def prepare_science_lecture(repo):
         text = path.read_text(encoding='utf-8')
         for old, new in replacements:
             if new in text:
+                continue
+            if relative == 'src/config.ts' and old.startswith('const fileSchema') and 'scienceMode: z.boolean().optional()' in text:
+                continue
+            if relative == 'src/workflow.ts' and old.startswith('    const decisions') and 'if (config.scienceMode && config.onePerStartTime)' in text:
                 continue
             if old not in text:
                 raise RuntimeError(f'科研讲座适配点不存在，拒绝修改 {relative}')
