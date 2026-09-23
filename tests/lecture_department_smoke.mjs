@@ -12,7 +12,7 @@ try {
  await page.goto('https://xkcts.ucas.ac.cn:8443/subject/lecture');
  const html=department=>`<table><tr><th>讲座名称</th><th>部门</th><th>讲座地点</th><th>讲座时间</th><th>操作</th></tr><tr><td>人工智能测试讲座</td><td>${department}</td><td>雁栖湖</td><td>2026-10-01 19:00-20:30</td><td><button onclick="window.clicked=true">报名</button></td></tr></table>`;
  await page.setContent(html('计算机学院'));
- for (const [text,expected] of [['已经预约过','registered'],['已经报名过','registered'],['此讲座无需报名','not-required'],['报名','unknown-or-unregistered'],['未预约','unknown-or-unregistered']]) {
+ for (const [text,expected] of [['已经预约过','registered'],['已经报名过','registered'],['此讲座无需报名','not-required'],['报名','unknown-or-unregistered'],['未预约','unknown-or-unregistered'],['报名失败','unknown-or-unregistered'],['报名截止','unknown-or-unregistered'],['取消报名','unknown-or-unregistered'],['人数已满','unknown-or-unregistered']]) {
   await page.setContent(html('化学科学学院').replace('>报名</button>',`>${text}</button>`));
   assert.equal((await readScienceSchedule(page))[0].registrationStatus,expected);
  }

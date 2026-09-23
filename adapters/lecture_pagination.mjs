@@ -102,7 +102,11 @@ export async function readScienceSchedule(page) {
   return rows.map(row => {
     const matches = statuses.filter(s => s.title === row.title && s.time === row.time && s.location === row.location);
     const status = matches.length === 1 ? matches[0].status : '';
-    const registered = /已(?:经)?报名(?:过)?|已(?:经)?预约(?:过)?|取消报名|取消预约|退选/.test(status) && !/未报名|未预约/.test(status);
+    // Only an explicit successful terminal state may authorize calendar import.
+    // The portal sometimes renders action/result text together, so reject failure,
+    // cancellation, expiry and capacity states before looking for a positive word.
+    const negative = /未报名|未预约|报名失败|预约失败|报名截止|预约截止|报名已结束|预约已结束|不可报名|无法报名|报名中|预约中|取消报名|取消预约|退选|人数已满|预约已满|名额已满|满额/;
+    const registered = !negative.test(status) && /已(?:经)?报名(?:过)?|已(?:经)?预约(?:过)?/.test(status);
     const free = /无需报名|不需报名|无需预约|免预约|免报名/.test(status);
     return {...row, department: matches.length === 1 ? matches[0].department : '', registrationText: status, rowText: matches.length === 1 ? matches[0].rowText : '', registrationStatus: registered ? 'registered' : free ? 'not-required' : 'unknown-or-unregistered'};
   });
