@@ -1,3 +1,4 @@
+import { backgroundArgs } from '../vendor/ucas-humanity-lecture-bot/dist/src/background.js';
 import { chromium } from '../vendor/ucas-humanity-lecture-bot/node_modules/playwright/index.mjs';
 import { existsSync } from 'node:fs';
 import { ensureAuthenticated } from '../vendor/ucas-humanity-lecture-bot/dist/src/login.js';
@@ -22,7 +23,7 @@ async function retryRead(page, config, logger, attempts = 3) {
 }
 
 export async function queryScienceSchedule(config, logger) {
-  const browser = await chromium.launch({ ...browserLaunchOptions(), headless: false });
+  const browser = await chromium.launch({ ...browserLaunchOptions(), args: backgroundArgs, headless: false });
   try {
     const state = process.env.UCAS_STORAGE_STATE;
     const context = await browser.newContext({ storageState: state && existsSync(state) ? state : undefined });
