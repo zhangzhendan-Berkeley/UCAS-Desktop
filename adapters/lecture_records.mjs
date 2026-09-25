@@ -1,4 +1,3 @@
-import { backgroundArgs } from '../vendor/ucas-humanity-lecture-bot/dist/src/background.js';
 import { browserLaunchOptions } from './browser_channel.mjs';
 import { chromium } from '../vendor/ucas-humanity-lecture-bot/node_modules/playwright/index.mjs';
 import { existsSync } from 'node:fs';
@@ -72,7 +71,7 @@ export async function readAttendance(page) {
 }
 
 export async function queryAttendance(config, logger) {
-  const browser = await chromium.launch({ ...browserLaunchOptions(), args: backgroundArgs, headless: false });
+  const browser = await chromium.launch({ ...browserLaunchOptions(), headless: false });
   try {
     const state = process.env.UCAS_STORAGE_STATE;
     const context = await browser.newContext({ storageState: state && existsSync(state) ? state : undefined });

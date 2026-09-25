@@ -1,4 +1,3 @@
-import { backgroundArgs } from '../vendor/ucas-humanity-lecture-bot/dist/src/background.js';
 import { browserLaunchOptions } from './browser_channel.mjs';
 // One browser session, four independent reads, no registration/sign-in entry points.
 import { chromium } from '../vendor/ucas-humanity-lecture-bot/node_modules/playwright/index.mjs';
@@ -12,7 +11,7 @@ export const dashboardParts = ['humanity', 'science', 'humanity-attendance', 'sc
 export async function queryDashboard(config, logger) {
   // Dashboard refresh is interactive: keep Edge visible so the user can
   // complete CAPTCHA, new-device, or email verification when required.
-  const browser = await chromium.launch({ ...browserLaunchOptions(), args: backgroundArgs, headless: false });
+  const browser = await chromium.launch({ ...browserLaunchOptions(), headless: false });
   let failed = false;
   let authenticationFailure = null;
   try {
