@@ -5,6 +5,22 @@ import { existsSync } from 'node:fs';
 import { ensureAuthenticated } from '../vendor/ucas-humanity-lecture-bot/dist/src/login.js';
 import { readUpcomingSchedule } from './lecture_pagination.mjs';
 
+async function retryRead(page, config, logger, path, attempts = 3) {
+  let last;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      await ensureAuthenticated(page, { ...config, humanityLectureUrl: 'https://xkcts.ucas.ac.cn:8443/subject/' + path }, logger);
+      return await readUpcomingSchedule(page, logger);
+    } catch (error) {
+      last = error;
+      if (attempt === attempts) break;
+      logger?.warn?.('lecture.query.retry', { path, attempt, error: String(error?.message || error) });
+      await new Promise(resolve => setTimeout(resolve, 1500 * attempt));
+    }
+  }
+  throw last;
+}
+
 export async function queryLectureCalendars(config, logger) {
   const browser = await chromium.launch({ ...browserLaunchOptions(), args: backgroundArgs, headless: false });
   try {
@@ -12,8 +28,7 @@ export async function queryLectureCalendars(config, logger) {
     const context = await browser.newContext({ storageState: state && existsSync(state) ? state : undefined });
     const page = await context.newPage();
     for (const [kind, path] of [['humanity', 'humanityLecture'], ['science', 'lecture']]) {
-      await ensureAuthenticated(page, { ...config, humanityLectureUrl: 'https://xkcts.ucas.ac.cn:8443/subject/' + path }, logger);
-      const result = await readUpcomingSchedule(page, logger);
+      const result = await retryRead(page, config, logger, path);
       console.log(JSON.stringify({ event: 'lecture.calendar', kind, ...result }));
     }
     if (state) await context.storageState({ path: state });
