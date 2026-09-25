@@ -1,0 +1,51 @@
+name: macOS release packages
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            arch: arm64
+          - os: macos-15-intel
+            arch: x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    env:
+      PYTHONIOENCODING: utf-8
+      PYTHONDONTWRITEBYTECODE: '1'
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build clean native application
+        run: python scripts/build_macos_release.py
+      - name: Test relocated application and bundled dependencies
+        run: python scripts/verify_macos_release.py
+      - name: Archive verified clean application
+        run: |
+          folder="dist/UCAS-Desktop-0.5.2-mac.1-macOS-${{ matrix.arch }}"
+          ditto -c -k --sequesterRsrc --keepParent "$folder" "$folder.zip"
+          cd dist
+          shasum -a 256 "$(basename "$folder").zip" > "$(basename "$folder").zip.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macOS-${{ matrix.arch }}
+          path: |
+            dist/*.zip
+            dist/*.sha256
+            dist/verification-*.json
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: macOS-debug-${{ matrix.arch }}
+          path: |
+            data/mac-verify/**/logs/*
+            ~/Library/Logs/UCAS Desktop/*

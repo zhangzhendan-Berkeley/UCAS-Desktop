@@ -1,6 +1,15 @@
 import Foundation
 import EventKit
 
+struct Entry: Decodable { let start: Double; let end: Double; let title: String; let location: String }
+// Validate the shipped native helper without requesting access or writing any calendars.
+if CommandLine.arguments.contains("--self-test") {
+    let entries = try JSONDecoder().decode([Entry].self, from: FileHandle.standardInput.readDataToEndOfFile())
+    guard entries.allSatisfy({ $0.end > $0.start && !$0.title.isEmpty }) else { exit(2) }
+    print("EventKit helper payload OK: \(entries.count)")
+    exit(0)
+}
+
 let store = EKEventStore()
 let semaphore = DispatchSemaphore(value: 0)
 var granted = false
@@ -24,7 +33,6 @@ if CommandLine.arguments.contains("--list") {
 let matches = calendars.filter { $0.title == "UCAS" && $0.source.title == "iCloud" && $0.source.sourceType == .calDAV && $0.allowsContentModifications }
 guard matches.count == 1 else { fputs("A unique writable iCloud/UCAS calendar was not found\n", stderr); exit(1) }
 let calendar = matches[0]
-struct Entry: Decodable { let start: Double; let end: Double; let title: String; let location: String }
 let entries = try JSONDecoder().decode([Entry].self, from: FileHandle.standardInput.readDataToEndOfFile())
 var added = 0
 var updated = 0
@@ -35,8 +43,10 @@ for item in entries {
     let predicate = store.predicateForEvents(withStart: start, end: end, calendars: [calendar])
     let existing = store.events(matching: predicate).filter { $0.title == item.title && abs($0.startDate.timeIntervalSince(start)) < 1 }
     if !existing.isEmpty {
-        for event in existing where !item.location.isEmpty && event.location != item.location {
-            event.location = item.location
+        for event in existing where event.notes == "UCAS Desktop 自动同步" &&
+            ((!item.location.isEmpty && event.location != item.location) || event.endDate != end) {
+            if !item.location.isEmpty { event.location = item.location }
+            event.endDate = end
             try store.save(event, span: .thisEvent, commit: false)
             updated += 1
         }

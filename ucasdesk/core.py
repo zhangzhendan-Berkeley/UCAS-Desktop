@@ -22,6 +22,8 @@ LOGS = ROOT / 'logs'
 VENDOR = ROOT / 'vendor'
 PYTHON = ROOT / 'runtime/python/python.exe'
 if not PYTHON.is_file():
+    PYTHON = ROOT / 'runtime/python/bin/python3'
+if not PYTHON.is_file():
     PYTHON = ROOT / '.venv/Scripts/python.exe'
 if not PYTHON.is_file():
     PYTHON = ROOT / '.venv/bin/python'
@@ -29,6 +31,8 @@ if not PYTHON.is_file():
     PYTHON = Path(sys.executable)
 # An explicit override or a system Node installation; no developer-machine paths.
 NODE = ROOT / 'runtime/node/node.exe'
+if not NODE.is_file():
+    NODE = ROOT / 'runtime/node/bin/node'
 if not NODE.is_file():
     NODE = Path(os.environ.get('UCAS_NODE') or shutil.which('node') or 'node')
 for directory in (DATA, LOGS):

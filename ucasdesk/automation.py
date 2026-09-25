@@ -84,9 +84,16 @@ class Automation(QObject):
                 activity = getattr(self.parent(), 'activity', None)
                 if activity is None:
                     raise RuntimeError('本地日历同步尚未准备好')
-                count, message = sync_tomorrow(activity, self.vault.get('iclass').get('username',''), self.vault.get('sep').get('username',''))
+                from .activity import scope
+                course_scope, sep_scope = scope(self.vault, 'iclass'), scope(self.vault, 'sep')
                 self.calendar_sync_day = now.date()
-                self.messages['calendar'] = message
+                def finished(result):
+                    self.messages['calendar'] = result[1]
+                    self.changed.emit()
+                def failed(error):
+                    self.messages['calendar'] = redact(str(error), self.vault.secret_values())
+                    self.changed.emit()
+                self.parent().background(lambda: sync_tomorrow(activity, course_scope, sep_scope), finished, failed)
             except Exception as exc:
                 self.messages['calendar'] = redact(str(exc), self.vault.secret_values())
         self.changed.emit()

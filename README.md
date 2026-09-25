@@ -11,7 +11,8 @@
 - 首次使用讲座/选课，或组件报错：进入 **设置与更新 → 检查并修复功能组件**。按本版固定版本下载、构建、验证，成功才替换；原组件自动备份。修复过程中不启动相关任务。
 - **从旧版升级**：先从托盘退出新旧程序，解压新版到新文件夹，双击新版的 **迁移旧版数据.cmd**，选择旧版文件夹。账号、课表、任务配置、慕课登录状态一并保留；旧安装不变。Windows 密码须在同一电脑、同一 Windows 用户下读取。
 - 浏览器需安装 Edge 或 Chrome；首次 SEP 查询可能联网下载匹配的驱动。详见 [便携版说明](docs/便携版说明.md)。
-- macOS / Linux 使用下面的源码安装流程：[macOS](docs/macOS安装.md)、[Linux](docs/Linux安装.md)。源码 ZIP 不包含运行环境，不能双击当作安装包；macOS `.app` 构建脚本只创建本地启动入口，不能独立分发。
+- **macOS 普通用户**：下载 [Mac 独立版](https://github.com/zhangzhendan-Berkeley/UCAS-Desktop/releases/tag/v0.5.2-mac.1)，按芯片选择 arm64（Apple Silicon）或 x64（Intel）。解压将 `.app` 拖到“应用程序”，无需 Python/Node/Xcode。保留课程和讲座同步到 iCloud UCAS 日历，详见 [Mac 便携版与日历说明](docs/macOS便携版说明.md)。
+- 源码安装：[macOS](docs/macOS安装.md)、[Linux](docs/Linux安装.md)。源码 ZIP 不包含运行环境；`build_macos_app.py` 是本地源码启动器，独立发行包使用 `build_macos_release.py`。
 
 ### 本版修复
 
