@@ -13,8 +13,11 @@ sys.path.insert(0, str(ROOT / 'vendor/UCAS-COURSE-SELECTION-SCRIPT'))
 from ucasdesk.core import DATA, browser_driver, browser_label, browser_options, driver_service
 from ucasdesk.sep import login_sep
 from ucasdesk.enrollment import account_hash
+from ucasdesk.selection_safety import (scheduled_start, login_time, wait_until,
+    prepare_course, RecoveryBudget, confirmed_full)
 import main as upstream
-from course_flow import run_course_selection, RateLimitedError, assert_not_rate_limited, open_query_page, query_course, target_checkbox, RequestPacer
+import course_flow as flow
+from course_flow import run_course_selection, RateLimitedError
 
 
 class Tee(io.StringIO):
@@ -30,36 +33,38 @@ def run(config):
         raise ValueError('课程编码格式不正确，请从 SEP 复制完整编码。')
     if not config.get('username') or not config.get('password'):
         raise ValueError('请先在个人信息页保存 SEP 账号。')
+    start_at = scheduled_start(config.get('start_at'))
+    interval = max(30, int(config.get('interval', 60)))
+    rounds = max(1, min(240, int(config.get('rounds', 1))))
+    if start_at and datetime.now() < login_time(start_at):
+        print(f'等待至 {login_time(start_at)} 准备登录；计划执行时间 {start_at}。', flush=True)
+        wait_until(login_time(start_at))
     options = browser_options(DATA / 'browser-selection' / account_hash(config['username'])[:16])
     print('正在启动 ' + browser_label() + '。首次使用可能需要下载匹配的驱动。', flush=True)
     driver = browser_driver(options, driver_service(ROOT / 'logs/selection-driver.log'))
     try:
         driver.set_page_load_timeout(30)
         login_sep(driver, config, open_courses=True, timeout=600)
-        if config.get('start_at'):
-            start_at = datetime.fromisoformat(config['start_at'])
+        if start_at:
             print(f'登录完成，等待执行时间 {start_at}。', flush=True)
-            while datetime.now() < start_at:
-                time.sleep(1)
-        interval = max(30, int(config.get('interval', 60)))
-        rounds = max(1, min(240, int(config.get('rounds', 1))))
+            wait_until(start_at)
+        budget = RecoveryBudget()
         pending = list(codes)
         failed = []
         for cycle in range(rounds):
             print(f'检查轮次 {cycle + 1}/{rounds}', flush=True)
             for code in list(pending):
-                assert_not_rate_limited(driver)
-                if upstream.course_already_selected(driver, code):
+                state = prepare_course(driver, config, code, flow=flow,
+                    already_selected=upstream.course_already_selected, login=login_sep, budget=budget)
+                if state == 'already-selected':
                     print(f'{code}：已在预选列表，不重复提交。', flush=True)
                     pending.remove(code)
                     continue
                 if config.get('preview'):
-                    pacer = RequestPacer(1)
-                    open_query_page(driver, pacer)
-                    query_course(driver, code, pacer)
-                    box = target_checkbox(driver, code)
-                    print(f'{code}：' + ('可选' if box and box.is_enabled() else '未找到、已满或不可选') + '（仅预览，未提交）', flush=True)
+                    print(f'{code}：' + ('可选' if state == 'available' else '已满或不可选') + '（仅预览，未提交）', flush=True)
                     pending.remove(code)
+                elif state == 'unavailable':
+                    print(f'{code}：已满或不可选，本轮未提交。', flush=True)
                 else:
                     capture = Tee()
                     with contextlib.redirect_stdout(capture):
@@ -69,7 +74,7 @@ def run(config):
                         print(json.dumps({'event': 'selection.success', 'id': code, 'title': code,
                             'semester': config.get('course_semesters', {}).get(code, '')}, ensure_ascii=False), flush=True)
                         pending.remove(code)
-                    elif '已满' not in output:
+                    elif not confirmed_full(output, code):
                         print(f'{code}：非满员失败或结果未知，不再重试。', flush=True)
                         failed.append(code)
                         pending.remove(code)

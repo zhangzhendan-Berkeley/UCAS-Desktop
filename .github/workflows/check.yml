@@ -72,6 +72,7 @@ jobs:
             ${{ matrix.python }} tests/sep_browser_smoke.py
           fi
           node tests/mooc_course_smoke.mjs
+          ${{ matrix.python }} tests/selection_session_browser_smoke.py
           node tests/lecture_portal_smoke.mjs
           node tests/lecture_department_smoke.mjs
           node tests/lecture_campus_smoke.mjs
