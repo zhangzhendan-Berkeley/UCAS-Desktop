@@ -188,6 +188,9 @@ def install_module(root, module, manifest=None, log=print, force=False):
             if module['id']=='lecture':
                 log('构建讲座组件…')
                 subprocess.run([str(NODE),str(staging/'node_modules/typescript/bin/tsc'),'-p',str(staging/'tsconfig.json')],cwd=staging,env=child_env(),check=True,**_child_options())
+        if module['id'] in ('lecture','mooc'):
+            entrypoint='./dist/src/workflow.js' if module['id']=='lecture' else './node_modules/playwright/index.mjs'
+            subprocess.run([str(NODE),'--input-type=module','-e','await import('+json.dumps(entrypoint)+')'],cwd=staging,env=child_env(),check=True,timeout=30,**_child_options())
         helper=None
         if module['id']=='mooc':
             generated=Path(tmp)/'generated';(generated/'adapters').mkdir(parents=True)
