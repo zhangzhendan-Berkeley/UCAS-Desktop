@@ -141,6 +141,11 @@ def prepare_science_lecture(repo):
         for old, new in replacements:
             if new in text:
                 continue
+            # The import may already have been added by an older partial
+            # installation while the science selection block is still absent.
+            # Avoid inserting it twice on the next repair run.
+            if relative == 'src/workflow.ts' and old == 'import { registerLecture } from "./register.js";\n' and 'import { parseLectureStart } from "./time-window.js";' in text:
+                continue
             if relative == 'src/config.ts' and old.startswith('const fileSchema') and 'scienceMode: z.boolean().optional()' in text:
                 continue
             if relative == 'src/workflow.ts' and old.startswith('    const decisions') and 'if (config.scienceMode && config.onePerStartTime)' in text:
