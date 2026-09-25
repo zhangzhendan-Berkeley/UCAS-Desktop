@@ -1,5 +1,4 @@
 """Build an architecture-native .app without depending on Homebrew or developer Python."""
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -9,7 +8,6 @@ import shutil
 import subprocess
 import sys
 import tarfile
-import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -144,7 +142,7 @@ int main(int argc, char **argv) {
         plistlib.dump({'CFBundleIdentifier': 'com.zhangzhendan.ucas-desktop.calendar', 'CFBundleName': 'UCAS Desktop Calendar', 'NSCalendarsUsageDescription': usage, 'NSCalendarsFullAccessUsageDescription': usage}, f)
     run(['swiftc', '-O', '-target', ('arm64' if arch == 'arm64' else 'x86_64') + '-apple-macosx13.0', ROOT / 'scripts/icloud_calendar.swift', '-o', helper,
          '-Xlinker', '-sectcreate', '-Xlinker', '__TEXT', '-Xlinker', '__info_plist', '-Xlinker', helper_plist])
-    shutil.copy2(ROOT / 'assets/app.icns', resources / 'app.icns')
+    run([python, '-c', 'from PIL import Image; import sys; Image.open(sys.argv[1]).save(sys.argv[2], format="ICNS")', ROOT / 'assets/app.png', resources / 'app.icns'], env=env)
     with (contents / 'Info.plist').open('wb') as f:
         plistlib.dump({'CFBundleExecutable': 'UCAS Desktop', 'CFBundleIdentifier': 'com.zhangzhendan.ucas-desktop', 'CFBundleName': 'UCAS Desktop', 'CFBundleDisplayName': 'UCAS Desktop', 'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '0.5.2', 'CFBundleVersion': '0.5.2.1', 'CFBundleIconFile': 'app.icns', 'LSMinimumSystemVersion': '13.0', 'NSHighResolutionCapable': True, 'NSCalendarsUsageDescription': usage, 'NSCalendarsFullAccessUsageDescription': usage}, f)
     # Ad-hoc signing guarantees integrity; it is NOT Apple Developer ID notarization.

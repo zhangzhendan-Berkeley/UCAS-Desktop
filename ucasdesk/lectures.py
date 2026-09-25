@@ -67,8 +67,16 @@ class LecturesMixin:
         try:
             from .macos_calendar import sync_tomorrow
             from .activity import scope
-            _, message = sync_tomorrow(self.activity, scope(self.vault, 'iclass'), scope(self.vault, 'sep'))
-            self.statusBar().showMessage(message)
+            if getattr(self, '_calendar_tomorrow_running', False):
+                return
+            course_scope, sep_scope = scope(self.vault, 'iclass'), scope(self.vault, 'sep')
+            self._calendar_tomorrow_running = True
+            def finish(result=None, error=None):
+                self._calendar_tomorrow_running = False
+                if error: self.error(error)
+                else: self.statusBar().showMessage(result[1])
+            self.background(lambda: sync_tomorrow(self.activity, course_scope, sep_scope),
+                            lambda result: finish(result=result), lambda error: finish(error=error))
         except Exception as exc:
             self.error(str(exc))
 
