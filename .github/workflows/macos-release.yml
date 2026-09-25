@@ -25,7 +25,9 @@ jobs:
         with:
           python-version: '3.12'
       - name: Build clean native application
-        run: python scripts/build_macos_release.py
+        run: |
+          python -m pip install requests==2.32.5
+          python scripts/build_macos_release.py
       - name: Test relocated application and bundled dependencies
         run: python scripts/verify_macos_release.py
       - name: Archive verified clean application
