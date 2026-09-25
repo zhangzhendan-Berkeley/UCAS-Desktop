@@ -181,6 +181,9 @@ def main():
             prepare_mooc(repo)
         if module['id'] == 'lecture':
             run([npm, 'run', 'build'], repo)
+            required = repo / 'dist' / 'src' / 'background.js'
+            if not required.is_file():
+                raise RuntimeError('讲座模块构建不完整：缺少 dist/src/background.js，请检查补丁应用和 TypeScript 构建输出。')
     if os.name == 'nt':
         run([python, ROOT / 'scripts/build_launcher.py'])
         print('安装完成。双击 UCAS桌面助手.exe 或 启动调试.cmd。学校功能需自行登录验证。')

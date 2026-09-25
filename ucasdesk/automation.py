@@ -112,8 +112,8 @@ class Automation(QObject):
                 self.messages[kind] = '讲座模块仍在运行，本时点等待；超过 2 分钟后跳过'
                 return
             account = self.credentials(kind)
-            if not (ROOT / 'vendor/ucas-humanity-lecture-bot/dist/src/workflow.js').exists():
-                raise ValueError('请先安装人文/科研讲座外部模块。')
+            if not (ROOT / 'vendor/ucas-humanity-lecture-bot/dist/src/workflow.js').exists() or not (ROOT / 'vendor/ucas-humanity-lecture-bot/dist/src/background.js').exists():
+                raise ValueError('讲座模块安装不完整（缺少 background.js）。请运行：python scripts/setup.py --with-external-modules')
             self.state['science_slot'] = slot
             write_json(self.state_path, self.state)
             self.jobs.start('science-daily', f'科研讲座定点报名 · {slot}', NODE,
@@ -131,8 +131,8 @@ class Automation(QObject):
                 self.messages[kind] = '讲座模块仍在运行，本时点等待；超过 2 分钟后跳过'
                 return
             account = self.credentials(kind)
-            if not (ROOT / 'vendor/ucas-humanity-lecture-bot/dist/src/workflow.js').exists():
-                raise ValueError('请先安装人文讲座外部模块。')
+            if not (ROOT / 'vendor/ucas-humanity-lecture-bot/dist/src/workflow.js').exists() or not (ROOT / 'vendor/ucas-humanity-lecture-bot/dist/src/background.js').exists():
+                raise ValueError('讲座模块安装不完整（缺少 background.js）。请运行：python scripts/setup.py --with-external-modules')
             self.state['lecture_slot'] = slot
             write_json(self.state_path, self.state)
             self.jobs.start('lecture-clock', f'讲座定点检查 · {slot}', NODE,
