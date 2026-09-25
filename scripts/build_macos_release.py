@@ -100,6 +100,12 @@ def main():
             stamp_module(payload, module)
     manifest = {'version': VERSION, 'build': VERSION + '-' + arch + '-' + commit[:12], 'commit': commit, 'arch': arch, 'python': PYTHON, 'node': NODE}
     (payload / 'macos-build.json').write_text(json.dumps(manifest, indent=2))
+    licenses = runtime / 'licenses/Qt'
+    licenses.mkdir(parents=True)
+    for name in ('LGPL-3.0-only.txt', 'GPL-3.0-only.txt'):
+        (licenses / name).write_bytes(download('https://raw.githubusercontent.com/pyside/pyside-setup/v6.10.1/LICENSES/' + name))
+    (licenses / 'SOURCES.txt').write_text('Qt / PySide6 6.10.1; dynamically loaded, replaceable libraries.\nPySide6: https://github.com/pyside/pyside-setup/tree/v6.10.1\nQt: https://download.qt.io/archive/qt/6.10/6.10.1/single/qt-everywhere-src-6.10.1.tar.xz\n')
+    (runtime / 'PYTHON-SOURCE.txt').write_text(f'CPython {PYTHON}: https://www.python.org/downloads/source/\nRelocatable distribution: https://github.com/astral-sh/python-build-standalone/releases/tag/{PBS}\nRuntime SHA256: {py_hash}\nNode {NODE} SHA256: {node_hash}\n')
     # Remove build bytecode, which can contain CI paths; no user state belongs in this bundle.
     for directory in list(payload.rglob('__pycache__')):
         shutil.rmtree(directory)

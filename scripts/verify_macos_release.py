@@ -30,7 +30,7 @@ def main():
     assert Path(report['python']).is_relative_to(target)
     python = target / 'runtime/python/bin/python3'
     node = target / 'runtime/node/bin/node'
-    env.update(UCAS_NODE=str(node), QT_QPA_PLATFORM='offscreen', PYTHONDONTWRITEBYTECODE='1')
+    env.update(UCAS_NODE=str(node), UCAS_PYTHON=str(python), QT_QPA_PLATFORM='offscreen', PYTHONDONTWRITEBYTECODE='1')
     def run(args, **kwargs):
         subprocess.run([str(x) for x in args], cwd=target, env=env, check=True, timeout=300, **kwargs)
     run([python, 'scripts/check_install.py'])
