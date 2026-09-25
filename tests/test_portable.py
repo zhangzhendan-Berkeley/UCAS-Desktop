@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 import zipfile
-from ucasdesk.portable import unpack_repo, apply_patch_file, archive_url, download, ready
+from ucasdesk.portable import unpack_repo, apply_patch_file, archive_url, download, ready, stamp_module, REQUIRED
 
 
 class PortableTests(unittest.TestCase):
@@ -40,7 +40,14 @@ class PortableTests(unittest.TestCase):
             self.assertFalse(ready(root, module))
             (target / 'dist/src').mkdir(parents=True)
             (target / 'dist/src/workflow.js').write_text('')
-            self.assertTrue(ready(root, module))
+            self.assertFalse(ready(root, module), 'A workflow marker alone is not a complete module')
+            (root/'ucasdesk').mkdir();(root/'ucasdesk/module_build.py').write_text('fixture')
+            for relative in REQUIRED['lecture']:
+                path=target/relative;path.parent.mkdir(parents=True,exist_ok=True);path.write_text('fixture')
+            stamp_module(root,module)
+            self.assertTrue(ready(root,module))
+            (target/'dist/src/background.js').unlink()
+            self.assertFalse(ready(root,module))
 
     def test_hash_mismatch_fails_closed(self):
         with patch('requests.Session') as session:

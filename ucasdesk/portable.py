@@ -11,17 +11,45 @@ import zipfile
 
 from .core import _child_options
 
-MARKERS = {'lecture': 'dist/src/workflow.js', 'selection': 'course_flow.py', 'mooc': 'package.json'}
+REQUIRED = {
+    'lecture': ['dist/src/workflow.js','dist/src/login.js','dist/src/background.js','dist/src/portal.js',
+                'dist/src/campus.js','dist/src/config.js','scripts/solve-captcha.py','node_modules/playwright/package.json',
+                'node_modules/playwright-core/package.json','node_modules/zod/package.json'],
+    'mooc': ['package.json','node_modules/playwright/package.json','node_modules/playwright-core/package.json','node_modules/chalk/package.json'],
+    'selection': ['main.py','course_flow.py'],
+    'planner': ['src/coursesystem/__init__.py','data/2026年秋季学期课表.xlsx'],
+}
+
+
+def recipe_hash(root, module):
+    paths = [root/'ucasdesk/module_build.py'] if module['id'] in ('lecture','mooc') else []
+    if module['id']=='lecture': paths += sorted((root/'patches').glob('lecture-*'))
+    digest=hashlib.sha256(module['commit'].encode())
+    for path in paths:
+        digest.update(path.name.encode());digest.update(path.read_bytes().replace(b'\r\n',b'\n'))
+    return digest.hexdigest()
+
+
+def module_issues(root, module):
+    if module['id']=='iclass': return [] if (root/'ucasdesk/iclass.py').is_file() else ['课程组件缺失']
+    target=root/module['path'];issues=[]
+    for relative in REQUIRED.get(module['id'],[]):
+        if not (target/relative).is_file():issues.append(relative)
+    if module['id']=='mooc' and not (root/'adapters/mooc_helpers.mjs').is_file():issues.append('adapters/mooc_helpers.mjs')
+    try:
+        stamp=json.loads((target/'.ucas-build.json').read_text(encoding='utf-8'))
+        if stamp.get('recipe')!=recipe_hash(root,module):issues.append('组件需要随应用更新重新准备')
+    except (OSError,ValueError):issues.append('缺少完整安装记录')
+    return issues
 
 
 def ready(root, module):
-    if module['id'] == 'iclass':
-        return (root / 'ucasdesk/iclass.py').is_file()
-    target = root / module['path']
-    if module['id'] not in MARKERS:
-        return target.is_dir()
-    return (target / MARKERS[module['id']]).is_file() and (
-        module['id'] != 'mooc' or (root / 'adapters/mooc_helpers.mjs').is_file())
+    return not module_issues(root,module)
+
+
+def stamp_module(root, module, target=None):
+    target=target or root/module['path']
+    (target/'.ucas-build.json').write_text(json.dumps({'commit':module['commit'],'recipe':recipe_hash(root,module)}),encoding='utf-8')
 
 
 def download(url, expected=None):
@@ -125,34 +153,61 @@ def prepare_lecture(root, directory):
                                 ('lecture-portal.ts', 'src/portal.ts'), ('lecture-portal.test.ts', 'tests/portal.test.ts'),
                                 ('lecture-campus.ts', 'src/campus.ts'), ('lecture-campus.test.ts', 'tests/campus.test.ts')]:
         shutil.copy2(root / 'patches' / source, directory / destination)
-    from scripts.setup import prepare_science_lecture
+    from .module_build import prepare_science_lecture
     prepare_science_lecture(directory)
 
 
-def install_module(root, module, manifest, log=print):
-    from .core import child_env, NODE
-    if ready(root, module):
-        log(module['name'] + '已就绪，保留现有模块。')
-        return
-    target = root / module['path']
-    if not target.resolve().is_relative_to((root / 'vendor').resolve()):
-        raise ValueError('模块必须安装在 vendor 内')
-    if target.exists():
-        raise RuntimeError('模块目录不完整，请先备份并移走该目录后重试：' + str(target))
-    entry = manifest[module['id']]
-    log('正在从上游下载固定版本：' + module['name'], flush=True)
-    data = download(archive_url(module), entry['archive_sha256'])
-    target.parent.mkdir(exist_ok=True, parents=True)
-    with tempfile.TemporaryDirectory(prefix='.module-', dir=target.parent) as tmp:
-        staging = Path(tmp) / 'source'
-        unpack_repo(data, staging)
-        if module['id'] == 'lecture':
-            prepare_lecture(root, staging)
-            shutil.copytree(root / 'runtime/lecture-node/node_modules', staging / 'node_modules')
-            log('正在准备讲座模块…', flush=True)
-            subprocess.run([str(NODE), str(staging / 'node_modules/typescript/bin/tsc'), '-p', str(staging / 'tsconfig.json')],
-                           cwd=staging, env=child_env(), check=True, **_child_options())
-        (staging / '.ucas-source.json').write_text(json.dumps({'commit': module['commit'], 'source': module['source']}) + '\n')
-        # Only rename into a previously absent, verified target; failed builds stay temporary.
-        staging.rename(target)
-    log(module['name'] + '已启用。', flush=True)
+def install_module(root, module, manifest=None, log=print, force=False):
+    """Prepare and validate separately; swap only a complete fixed-version module."""
+    from .core import child_env, NODE, write_json
+    from .module_build import prepare_mooc
+    from datetime import datetime
+    if ready(root,module) and not force:
+        log(module['name']+'已就绪。');return
+    target=(root/module['path']).resolve()
+    if not target.is_relative_to((root/'vendor').resolve()):raise ValueError('模块必须安装在 vendor 内')
+    manifest=manifest or json.loads((root/'modules-downloads.json').read_text(encoding='utf-8'))
+    entry=manifest[module['id']]
+    if entry['commit']!=module['commit']:raise ValueError('模块校验清单与固定版本不一致')
+    cache=root/'data/module-downloads';cache.mkdir(parents=True,exist_ok=True)
+    archive=cache/(module['id']+'-'+module['commit']+'.zip')
+    if not archive.exists() or hashlib.sha256(archive.read_bytes()).hexdigest()!=entry['archive_sha256']:
+        log('下载固定版本：'+module['name'])
+        archive.write_bytes(download(archive_url(module),entry['archive_sha256']))
+    target.parent.mkdir(exist_ok=True,parents=True)
+    with tempfile.TemporaryDirectory(prefix='.module-',dir=target.parent) as tmp:
+        staging=Path(tmp)/'source';unpack_repo(archive.read_bytes(),staging)
+        if module['id']=='lecture':prepare_lecture(root,staging)
+        if module['id'] in ('lecture','mooc'):
+            dependencies=root/'runtime'/(module['id']+'-node')/'node_modules'
+            if dependencies.is_dir():shutil.copytree(dependencies,staging/'node_modules')
+            else:
+                npm=Path(NODE).parent/'node_modules/npm/bin/npm-cli.js'
+                command=[str(NODE),str(npm)] if npm.is_file() else [shutil.which('npm.cmd' if __import__('os').name=='nt' else 'npm') or 'npm']
+                subprocess.run(command+['ci','--ignore-scripts','--no-audit','--no-fund'],cwd=staging,env=child_env({'PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD':'1'}),check=True,**_child_options())
+            if module['id']=='lecture':
+                log('构建讲座组件…')
+                subprocess.run([str(NODE),str(staging/'node_modules/typescript/bin/tsc'),'-p',str(staging/'tsconfig.json')],cwd=staging,env=child_env(),check=True,**_child_options())
+        helper=None
+        if module['id']=='mooc':
+            generated=Path(tmp)/'generated';(generated/'adapters').mkdir(parents=True)
+            prepare_mooc(generated,staging);helper=generated/'adapters/mooc_helpers.mjs'
+        missing=[p for p in REQUIRED.get(module['id'],[]) if not (staging/p).is_file()]
+        if missing:raise RuntimeError('组件构建不完整：'+', '.join(missing))
+        stamp_module(root,module,staging)
+        write_json(staging/'.ucas-source.json',{'commit':module['commit'],'source':module['source']})
+        backup=root/'data/module-backups'/(module['id']+'-'+datetime.now().strftime('%Y%m%d-%H%M%S-%f'))
+        old_helper=(root/'adapters/mooc_helpers.mjs').read_bytes() if helper and (root/'adapters/mooc_helpers.mjs').exists() else None
+        moved=False;installed=False
+        try:
+            if target.exists():backup.parent.mkdir(parents=True,exist_ok=True);target.rename(backup);moved=True
+            staging.rename(target);installed=True
+            if helper:
+                out=root/'adapters/mooc_helpers.mjs';out.parent.mkdir(parents=True,exist_ok=True)
+                temporary=out.with_suffix('.mjs.tmp');shutil.copy2(helper,temporary);temporary.replace(out)
+        except Exception:
+            if installed:target.rename(Path(tmp)/'failed')
+            if moved:backup.rename(target)
+            if helper and old_helper is not None:(root/'adapters/mooc_helpers.mjs').write_bytes(old_helper)
+            raise
+    log(module['name']+'已准备完成；原模块如有内容已备份，账号与浏览器登录状态未改动。')

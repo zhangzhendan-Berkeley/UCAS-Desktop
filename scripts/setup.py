@@ -11,6 +11,7 @@ import sys
 import venv
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 
 
 def run(args, cwd=ROOT, capture=False):
@@ -65,95 +66,28 @@ def checkout(module):
 
 
 def prepare_mooc(repo):
-    # Extract only the supported functions; upstream's example login URL and
-    # hard-coded browser/account settings never enter the generated adapter.
-    original = (repo / 'main.mjs').read_text(encoding='utf-8')
-    start = original.index('async function deal_video(')
-    end = original.index('(async () => {', start)
-    code = original[start:end]
-    replacements = {
-        'console.log(chalk.yellowBright("       Video wait timed out, continuing."));':
-            'throw new Error("视频等待超时，学校尚未确认任务点完成。");',
-        'console.log(chalk.yellowBright("       " + JSON.stringify(data)));':
-            'throw new Error("文档任务点未得到服务器确认。");',
-    }
-    for old, new in replacements.items():
-        if code.count(old) != 1:
-            raise RuntimeError('慕课函数结构变化，拒绝生成未经验证的适配器。')
-        code = code.replace(old, new)
-    header = ('// Generated from wendychan03/ucas-mooc-helper (package metadata: ISC).\n'
-              '// Original work: kejaly/ucas_english_mooc. See THIRD_PARTY.md.\n'
-              'import chalk from "../vendor/mooc-english/node_modules/chalk/source/index.js";\n')
-    (ROOT / 'adapters/mooc_helpers.mjs').write_text(
-        header + code + '\nexport { deal_video, deal_pdf };\n', encoding='utf-8')
+    from ucasdesk.module_build import prepare_mooc as prepare
+    prepare(ROOT, repo)
 
 
 def prepare_lecture(repo):
-    patches = [ROOT / 'patches' / name for name in
-               ('lecture-local.patch', 'lecture-sep-workbench.patch', 'lecture-table.patch', 'lecture-campus.patch', 'lecture-browser.patch', 'lecture-captcha-runtime.patch', 'lecture-department.patch', 'lecture-background.patch')]
-    first_missing = 0
-    for index in reversed(range(len(patches))):
-        reverse = subprocess.run(['git', 'apply', '--ignore-space-change', '--reverse', '--check', str(patches[index])],
-                                 cwd=repo, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        if reverse.returncode == 0:
-            first_missing = index + 1
-            break
-    for patch in patches[first_missing:]:
-        run(['git', 'apply', '--ignore-space-change', '--check', str(patch)], repo)
-        run(['git', 'apply', '--ignore-space-change', str(patch)], repo)
-    # The background patch also changes existing files. A partially applied
-    # checkout can report those hunks as already present while its new file is
-    # missing, so verify and restore the generated source explicitly.
-    background = repo / 'src' / 'background.ts'
-    canonical = ROOT / 'patches' / 'lecture-background.ts'
-    if not background.is_file():
-        background.write_bytes(canonical.read_bytes())
-    for source, destination in [('lecture-register.test.ts', 'tests/register.test.ts'),
-                                ('lecture-portal.ts', 'src/portal.ts'),
-                                ('lecture-portal.test.ts', 'tests/portal.test.ts'),
-                                ('lecture-campus.ts', 'src/campus.ts'),
-                                ('lecture-campus.test.ts', 'tests/campus.test.ts')]:
-        target = repo / destination
-        content = (ROOT / 'patches' / source).read_bytes()
-        if target.exists() and target.read_bytes() != content:
-            raise RuntimeError(f'{destination} 存在其他修改，不覆盖。')
-        target.write_bytes(content)
-
-
-def prepare_science_lecture(repo):
-    """Add the local science-lecture selection policy after upstream patches."""
-    files = {
-        'src/types.ts': [
-            ('  humanityLectureUrl: string;\n', '  humanityLectureUrl: string;\n  scienceMode?: boolean;\n  scienceKeywords?: string[];\n  onePerStartTime?: boolean;\n'),
-        ],
-        'src/config.ts': [
-            ('const fileSchema = z.object({\n', 'const fileSchema = z.object({\n  scienceMode: z.boolean().optional(),\n  onePerStartTime: z.boolean().optional(),\n  scienceKeywords: z.array(z.string()).optional(),\n'),
-            ('    humanityLectureUrl: parsedFile.targets?.lectureUrl ?? defaultLectureUrl,\n', '    humanityLectureUrl: parsedFile.targets?.lectureUrl ?? defaultLectureUrl,\n    scienceMode: parsedFile.scienceMode ?? false,\n    onePerStartTime: parsedFile.onePerStartTime ?? false,\n    scienceKeywords: parsedFile.scienceKeywords ?? [],\n'),
-        ],
-        'src/workflow.ts': [
-            ('import { registerLecture } from "./register.js";\n', 'import { registerLecture } from "./register.js";\nimport { parseLectureStart } from "./time-window.js";\n'),
-            ('    const decisions = decideLectures(\n      snapshot.lectures.filter(lecture => isYanqiLocation(lecture.location)),\n', '    let eligibleLectures = snapshot.lectures.filter(lecture => isYanqiLocation(lecture.location));\n    if (config.scienceMode && config.onePerStartTime) {\n      const groups = new Map<string, typeof eligibleLectures>();\n      for (const lecture of eligibleLectures) {\n        const parsed = lecture.startTimeText ? parseLectureStart(lecture.startTimeText) : null;\n        const key = parsed ? parsed.date.toISOString().slice(0, 16) : lecture.id;\n        const group = groups.get(key) ?? []; group.push(lecture); groups.set(key, group);\n      }\n      const keywords = (config.scienceKeywords ?? []).map(x => x.toLowerCase());\n      eligibleLectures = [...groups.values()].map(group => group.sort((a, b) => {\n        const score = (x: typeof a) => keywords.reduce((n, k) => n + (x.title.toLowerCase().includes(k) ? 1 : 0), 0);\n        return score(b) - score(a);\n      })[0]);\n    }\n    const decisions = decideLectures(\n      eligibleLectures,\n'),
-        ],
-    }
-    for relative, replacements in files.items():
-        path = repo / relative
-        text = path.read_text(encoding='utf-8')
-        for old, new in replacements:
-            if new in text:
-                continue
-            # The import may already have been added by an older partial
-            # installation while the science selection block is still absent.
-            # Avoid inserting it twice on the next repair run.
-            if relative == 'src/workflow.ts' and old == 'import { registerLecture } from "./register.js";\n' and 'import { parseLectureStart } from "./time-window.js";' in text:
-                continue
-            if relative == 'src/config.ts' and old.startswith('const fileSchema') and 'scienceMode: z.boolean().optional()' in text:
-                continue
-            if relative == 'src/workflow.ts' and old.startswith('    const decisions') and 'if (config.scienceMode && config.onePerStartTime)' in text:
-                continue
-            if old not in text:
-                raise RuntimeError(f'科研讲座适配点不存在，拒绝修改 {relative}')
-            text = text.replace(old, new, 1)
-        path.write_text(text, encoding='utf-8')
+    """Regenerate managed sources from the pinned clean tree, never stack diffs."""
+    import io, zipfile, tempfile
+    from datetime import datetime
+    from ucasdesk.portable import prepare_lecture as prepare
+    archive = subprocess.check_output(['git','archive','--format=zip','HEAD'],cwd=repo)
+    with tempfile.TemporaryDirectory(prefix='ucas-lecture-') as tmp:
+        clean=Path(tmp)
+        zipfile.ZipFile(io.BytesIO(archive)).extractall(clean)
+        prepare(ROOT,clean)
+        backup=ROOT/'data/module-backups'/('lecture-sources-'+datetime.now().strftime('%Y%m%d-%H%M%S-%f'))
+        for folder in ('src','tests'):
+            for incoming in (clean/folder).rglob('*'):
+                if not incoming.is_file(): continue
+                relative=incoming.relative_to(clean);target=repo/relative
+                if target.exists() and target.read_bytes()!=incoming.read_bytes():
+                    saved=backup/relative;saved.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(target,saved)
+                target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(incoming,target)
 
 
 def main():
@@ -183,10 +117,13 @@ def main():
         if module.get('external_opt_in') and not args.with_external_modules:
             print(f"跳过可选外部模块：{module['name']}", flush=True)
             continue
+        if (ROOT / module['path']).is_dir() and not (ROOT / module['path'] / '.git').exists():
+            from ucasdesk.portable import install_module
+            install_module(ROOT, module, None, force=True)
+            continue
         repo = checkout(module)
         if module['id'] == 'lecture':
             prepare_lecture(repo)
-            prepare_science_lecture(repo)
         if module['id'] in ('mooc', 'lecture'):
             run([npm, 'ci', '--no-audit', '--no-fund'], repo)
         if module['id'] == 'mooc':
@@ -196,6 +133,10 @@ def main():
             required = repo / 'dist' / 'src' / 'background.js'
             if not required.is_file():
                 raise RuntimeError('讲座模块构建不完整：缺少 dist/src/background.js，请检查补丁应用和 TypeScript 构建输出。')
+        from ucasdesk.portable import stamp_module, ready
+        stamp_module(ROOT, module)
+        if not ready(ROOT, module):
+            raise RuntimeError('组件校验未通过：' + module['name'])
     if os.name == 'nt':
         run([python, ROOT / 'scripts/build_launcher.py'])
         print('安装完成。双击 UCAS桌面助手.exe 或 启动调试.cmd。学校功能需自行登录验证。')

@@ -34,8 +34,8 @@ def main():
         'CFBundleIdentifier': 'com.zhangzhendan.ucas-desktop',
         'CFBundleName': 'UCAS Desktop',
         'CFBundlePackageType': 'APPL',
-        'CFBundleShortVersionString': '0.5.1',
-        'CFBundleVersion': '0.5.1',
+        'CFBundleShortVersionString': '0.5.2',
+        'CFBundleVersion': '0.5.2',
         'LSMinimumSystemVersion': '13.0',
         'NSHighResolutionCapable': True,
     }

@@ -1,0 +1,18 @@
+{
+  "lecture": {
+    "commit": "8ec05b402577ecf045b807e21cf52f6c8ce27514",
+    "archive_sha256": "ae6f428d3cf1d403c3e491759b4c07797f56ccd7669e3a039b012ed81e2b97ac"
+  },
+  "mooc": {
+    "commit": "65d849d79c2a053bc6f194ad64a8f985f3aa7129",
+    "archive_sha256": "bd2e178b858f8d63b52548092c46d8ec5cf73a01b206f15281846749034b8247"
+  },
+  "planner": {
+    "commit": "d7d12d48853bd6f30ca517bcf1716e1c39ab200e",
+    "archive_sha256": "487a24f1ffb891b28de29336d2de2adb572bccb1046b469d7c4d39b8b0138527"
+  },
+  "selection": {
+    "commit": "7ddd1c2e4aa923cd082aa796de6a5b82bfdc1ca8",
+    "archive_sha256": "b638ee8c4afd527aedf8c30bd167285a6eaf6ecb045f7ac2dd7227d36d8fb54a"
+  }
+}

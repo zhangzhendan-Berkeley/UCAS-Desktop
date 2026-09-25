@@ -40,6 +40,8 @@ jobs:
           sudo apt-get install -y gnome-keyring dbus-x11 fonts-noto-cjk libegl1 libopengl0 libxcb-cursor0 libxkbcommon-x11-0
       - name: Install pinned modules
         run: python scripts/setup.py --with-external-modules
+      - name: Check installed components
+        run: ${{ matrix.python }} scripts/check_install.py
       - name: Python unit tests
         run: |
           ${{ matrix.python }} -m compileall -q app.py ucasdesk adapters scripts tests
@@ -69,6 +71,7 @@ jobs:
           else
             ${{ matrix.python }} tests/sep_browser_smoke.py
           fi
+          node tests/mooc_course_smoke.mjs
           node tests/lecture_portal_smoke.mjs
           node tests/lecture_department_smoke.mjs
           node tests/lecture_campus_smoke.mjs

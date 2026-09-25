@@ -68,6 +68,8 @@ class Automation(QObject):
         return account
 
     def tick(self, now=None):
+        if any(job.get('module') == 'module-install' for job in self.jobs.active.values()):
+            return  # Do not start a worker while its component is being replaced.
         now = now or datetime.now()
         for kind in ('course', 'lecture', 'science'):
             if not self.enabled(kind):

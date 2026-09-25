@@ -156,7 +156,7 @@ class Window(LecturesMixin, DashboardMixin, QMainWindow):
         self.nav.setObjectName('navigation')
         self.nav.addItems(['概览', '课程签到', '人文/科研讲座', '国科大在线', '选课规划', '自动选课', '任务与日志', '设置与更新', '个人信息'])
         side.addWidget(self.nav)
-        self.runtime_hint = label('本地运行 · v0.5.1\n关闭窗口后托盘运行\n右键托盘可退出程序', 'sideText')
+        self.runtime_hint = label('本地运行 · v0.5.2\n关闭窗口后托盘运行\n右键托盘可退出程序', 'sideText')
         side.addWidget(self.runtime_hint)
         horizontal.addWidget(sidebar)
         self.pages = QStackedWidget()
@@ -495,12 +495,14 @@ class Window(LecturesMixin, DashboardMixin, QMainWindow):
 
     def start_job(self, module, title, program, args, payload, open_logs=True):
         if module in ('lecture', 'selection', 'mooc'):
+            if any(item.get('module') == 'module-install' for item in self.jobs.active.values()):
+                raise ValueError('正在修复组件，请完成后再启动任务。')
             from .portable import ready
             entry = next(m for m in read_json(ROOT / 'modules.json', []) if m['id'] == module)
             if not ready(ROOT, entry):
-                if (ROOT / 'runtime/modules-downloads.json').is_file():
+                if (ROOT / 'modules-downloads.json').is_file():
                     self.nav.setCurrentRow(7)
-                    raise ValueError('请在“设置与更新”点击“一键启用讲座预约与抢课”。无需安装开发环境，完成后返回此页面启动任务。')
+                    raise ValueError('请在“设置与更新”点击“检查并修复功能组件”。无需安装开发环境，完成后返回此页面启动任务。')
                 command = 'python scripts/setup.py' + (' --with-external-modules' if entry.get('external_opt_in') else '')
                 raise ValueError(f'此模块尚未安装。请按 README 执行：{command}')
             if module == 'mooc' and not (ROOT / 'adapters/mooc_helpers.mjs').is_file():
@@ -649,16 +651,18 @@ class Window(LecturesMixin, DashboardMixin, QMainWindow):
         self.mooc_url = QLineEdit('https://mooc.ucas.edu.cn/portal')
         self.mooc_url.setPlaceholderText('也可粘贴该课程任意章节的完整 URL')
         content.addWidget(self.mooc_url)
-        content.addWidget(button('启动视频 / 文档任务', self.run_mooc, True))
+        content.addLayout(row(button('启动视频 / 文档任务', self.run_mooc, True), button('仅诊断章节页面', lambda: self.run_mooc(diagnostic=True))))
         layout.addWidget(group)
         layout.addWidget(label('当前适配范围：2026 春季页面结构的硕士英语慕课。测验、考试和作业未自动化；其他课程需确认页面兼容。\n若仍有未完成任务，日志会列出，不会显示“整门课程已通过”。', 'banner'))
         layout.addWidget(label('学校手册说明 PC 与 App 学习数据互通，但不可同时使用。运行电脑任务时，请退出手机上的同一课程。', 'muted'))
         layout.addLayout(row(button('打开国科大在线', lambda: QDesktopServices.openUrl(QUrl('https://mooc.ucas.edu.cn/portal'))), button('打开学校使用手册', lambda: QDesktopServices.openUrl(QUrl('https://foreign.ucas.edu.cn/docs/2025-02/e5c8ee6db8424f718909a11c6307c699.pdf')))))
         layout.addStretch()
 
-    def run_mooc(self):
+    def run_mooc(self, checked=False, diagnostic=False):
         try:
-            self.start_job('mooc', '国科大在线 · 视频 / 文档', NODE, [ROOT / 'adapters/mooc.mjs'], {'url': self.mooc_url.text().strip()})
+            if any(job.get('module') == 'mooc' for job in self.jobs.active.values()):
+                raise ValueError('已有慕课任务使用登录浏览器，请先停止旧任务再启动。')
+            self.start_job('mooc', '国科大在线 · 视频 / 文档', NODE, [ROOT / 'adapters/mooc.mjs'], {'url': self.mooc_url.text().strip(), 'diagnostic': diagnostic})
         except Exception as exc:
             self.error(str(exc))
 
@@ -976,11 +980,11 @@ class Window(LecturesMixin, DashboardMixin, QMainWindow):
 
     def build_settings(self):
         layout = self.page('设置与更新', '模块来源、固定版本和维护接口都保留在本地，便于后续升级。')
-        if (ROOT / 'runtime/modules-downloads.json').is_file():
+        if (ROOT / 'modules-downloads.json').is_file():
             group = QGroupBox('便携版组件')
             content = QVBoxLayout(group)
-            content.addWidget(label('Python、Node 和基础功能已内置。讲座预约与抢课的外部模块由下方按钮直接从原作者仓库获取；完成后即可使用，无需命令行。', 'muted'))
-            content.addWidget(button('一键启用讲座预约与抢课', self.install_portable_modules, True))
+            content.addWidget(label('检查慕课、讲座、课表和选课组件，自动修复缺失文件与过期构建。仅下载固定版本；旧组件自动备份，账号及课表配置保留。讲座与选课第三方来源见使用说明。', 'muted'))
+            content.addWidget(button('检查并修复功能组件', self.install_portable_modules, True))
             layout.addWidget(group)
         self.module_table = table(['模块', '上游最后提交', '固定提交', '本地能力'])
         modules = read_json(ROOT / 'modules.json', [])
@@ -989,8 +993,8 @@ class Window(LecturesMixin, DashboardMixin, QMainWindow):
             for column, value in enumerate([module['name'], module['updated'], module['commit'][:10], module['capabilities']]):
                 self.module_table.setItem(index, column, QTableWidgetItem(value))
         layout.addWidget(self.module_table, 1)
-        layout.addLayout(row(button('检查上游新版本', self.update_check), button('下载更新到暂存目录', self.update_stage), button('维护与接口说明', lambda: self.open_path(ROOT / 'docs/维护与接口.md'))))
-        self.update_status = label('检查更新只读取远端提交；暂存下载不会覆盖当前工作版本和账号数据。', 'muted')
+        layout.addLayout(row(button('打开应用最新版本', lambda: QDesktopServices.openUrl(QUrl('https://github.com/zhangzhendan-Berkeley/UCAS-Desktop/releases/latest'))), button('检查第三方上游（供维护）', self.update_check), button('维护与接口说明', lambda: self.open_path(ROOT / 'docs/维护与接口.md'))))
+        self.update_status = label('应用更新从发布页下载；组件修复使用本版本验证过的依赖。第三方上游的新提交不等于本应用的新版本。', 'muted')
         layout.addWidget(self.update_status)
         group = QGroupBox('本地 API 与手机状态面板')
         form = QVBoxLayout(group)
@@ -1004,11 +1008,11 @@ class Window(LecturesMixin, DashboardMixin, QMainWindow):
         layout.addWidget(group)
 
     def install_portable_modules(self):
-        if any(item.get('module') == 'module-install' for item in self.jobs.active.values()):
-            self.error('组件正在准备中，请在“任务与日志”查看进度。')
+        if any(item.get('module') in ('module-install','lecture','lecture-clock','science-daily','selection','mooc') for item in self.jobs.active.values()):
+            self.error('相关功能仍在运行，请等任务结束或停止后再修复组件。')
             return
         self.start_job('module-install', '下载并启用外部组件', PYTHON,
-                       [ROOT / 'adapters/install_modules.py'], {'modules': ['lecture', 'selection']})
+                       [ROOT / 'adapters/install_modules.py'], {'modules': ['mooc', 'lecture', 'selection', 'planner']})
 
     def update_check(self):
         self.background(check_updates, lambda results: self.update_status.setText('\n'.join(f'{x["name"]}：' + (x.get('error') or ('有新提交 ' + x['latest'][:10] if x.get('update') else '与上游一致')) for x in results)))

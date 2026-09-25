@@ -10,10 +10,10 @@ from ucasdesk.portable import install_module
 if __name__ == '__main__':
     try:
         options = json.load(sys.stdin)
-        requested = set(options.get('modules', ['lecture', 'selection']))
-        if not requested <= {'lecture', 'selection'}:
+        requested = set(options.get('modules', ['mooc', 'lecture', 'selection']))
+        if not requested <= {'mooc', 'lecture', 'selection', 'planner'}:
             raise ValueError('不支持的模块')
-        manifest = read_json(ROOT / 'runtime/modules-downloads.json')
+        manifest = read_json(ROOT / 'modules-downloads.json', read_json(ROOT / 'runtime/modules-downloads.json', {}))
         for module in read_json(ROOT / 'modules.json', []):
             if module['id'] in requested:
                 install_module(ROOT, module, manifest)

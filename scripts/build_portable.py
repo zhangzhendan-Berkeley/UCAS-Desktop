@@ -71,7 +71,7 @@ def trim_qt(output):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--version', default='0.5.1')
+    parser.add_argument('--version', default='0.5.2')
     parser.add_argument('--no-zip', action='store_true')
     parser.add_argument('--resume', action='store_true', help='Resume this version only before it has ever been run')
     args = parser.parse_args()
@@ -138,7 +138,7 @@ def main():
     generated = output / 'adapters/mooc_helpers.mjs'
     if generated.exists():
         generated.unlink()
-    for filename in ('app.py', 'requirements.txt', 'modules.json', 'LICENSE', 'README.md', 'THIRD_PARTY.md', '使用指南.md'):
+    for filename in ('app.py', 'requirements.txt', 'modules.json', 'modules-downloads.json', 'LICENSE', 'README.md', 'THIRD_PARTY.md', '使用指南.md'):
         shutil.copy2(ROOT / filename, output / filename)
     copy_contents(python_dir, output / 'runtime/python')
     # pip console wrappers contain the build interpreter's absolute path and are unused.
@@ -154,6 +154,7 @@ def main():
     trim_qt(output)
     copy_contents(node_dir, output / 'runtime/node')
     copy_contents(sources['lecture'] / 'node_modules', output / 'runtime/lecture-node/node_modules')
+    copy_contents(sources['mooc'] / 'node_modules', output / 'runtime/mooc-node/node_modules')
     # MIT planner source and its upstream course snapshot; no personal planner database.
     copy_contents(sources['planner'] / 'src', output / 'vendor/UCAS-Course-Selector/src')
     planner_data = output / 'vendor/UCAS-Course-Selector/data'
@@ -183,6 +184,11 @@ def main():
     spec.loader.exec_module(setup)
     setup.ROOT = output
     setup.prepare_mooc(sources['mooc'])
+    from ucasdesk.portable import stamp_module, ready
+    for module in modules:
+        if module['id'] in ('mooc','planner'):
+            stamp_module(output,module)
+            if not ready(output,module): raise RuntimeError('打包组件不完整：'+module['name'])
     (output / 'runtime/modules-downloads.json').write_text(json.dumps(manifest, indent=2), encoding='utf-8')
     run([python, output / 'scripts/build_launcher.py'], output)
     report = json.loads((cache / 'python-install-report.json').read_text(encoding='utf-8'))
@@ -204,6 +210,7 @@ def main():
         'python_sha256': PYTHON_SHA, 'node_sha256': NODE_SHA, 'source': 'https://github.com/zhangzhendan-Berkeley/UCAS-Desktop'}, indent=2), encoding='utf-8')
     shutil.copy2(ROOT / 'docs/便携版说明.md', output / '先读我.md')
     (output / '启动诊断.cmd').write_text('@echo off\r\ncd /d "%~dp0"\r\n"runtime\\python\\python.exe" app.py\r\npause\r\n', encoding='ascii')
+    (output / '迁移旧版数据.cmd').write_text('@echo off\r\ncd /d "%~dp0"\r\n"runtime\\python\\python.exe" scripts\\migrate_data.py\r\n', encoding='ascii')
     # No developer state or local paths belong in a distributable.
     assert not (output / 'data').exists() and not (output / 'logs').exists()
     for path in output.rglob('*'):
