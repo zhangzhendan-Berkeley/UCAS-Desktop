@@ -101,6 +101,13 @@ def prepare_lecture(repo):
     for patch in patches[first_missing:]:
         run(['git', 'apply', '--ignore-space-change', '--check', str(patch)], repo)
         run(['git', 'apply', '--ignore-space-change', str(patch)], repo)
+    # The background patch also changes existing files. A partially applied
+    # checkout can report those hunks as already present while its new file is
+    # missing, so verify and restore the generated source explicitly.
+    background = repo / 'src' / 'background.ts'
+    canonical = ROOT / 'patches' / 'lecture-background.ts'
+    if not background.is_file():
+        background.write_bytes(canonical.read_bytes())
     for source, destination in [('lecture-register.test.ts', 'tests/register.test.ts'),
                                 ('lecture-portal.ts', 'src/portal.ts'),
                                 ('lecture-portal.test.ts', 'tests/portal.test.ts'),

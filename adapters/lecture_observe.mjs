@@ -1,4 +1,5 @@
 import { chromium } from '../vendor/ucas-humanity-lecture-bot/node_modules/playwright/index.mjs';
+import { backgroundArgs } from '../vendor/ucas-humanity-lecture-bot/dist/src/background.js';
 import { existsSync } from 'node:fs';
 import { ensureAuthenticated } from '../vendor/ucas-humanity-lecture-bot/dist/src/login.js';
 import { extractLectureSnapshot } from '../vendor/ucas-humanity-lecture-bot/dist/src/lecture-page.js';
@@ -12,7 +13,7 @@ export async function observeAndBook(config, logger, dir, payload, runAutomation
   let snapshot;
   let browser;
   try {
-    browser = await chromium.launch({ ...browserLaunchOptions(), headless: false });
+    browser = await chromium.launch({ ...browserLaunchOptions(), args: backgroundArgs, headless: false });
     const statePath = process.env.UCAS_STORAGE_STATE;
     const context = await browser.newContext({ storageState: statePath && existsSync(statePath) ? statePath : undefined });
     const page = await context.newPage();
