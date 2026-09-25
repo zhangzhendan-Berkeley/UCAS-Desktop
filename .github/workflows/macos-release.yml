@@ -32,7 +32,8 @@ jobs:
         run: python scripts/verify_macos_release.py
       - name: Archive verified clean application
         run: |
-          folder="dist/UCAS-Desktop-0.5.2-mac.1-macOS-${{ matrix.arch }}"
+          version=$(python -c 'from ucasdesk import __version__; print(__version__)')
+          folder="dist/UCAS-Desktop-${version}-macOS-${{ matrix.arch }}"
           ditto -c -k --sequesterRsrc --keepParent "$folder" "$folder.zip"
           cd dist
           shasum -a 256 "$(basename "$folder").zip" > "$(basename "$folder").zip.sha256"

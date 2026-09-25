@@ -4,6 +4,8 @@ from pathlib import Path
 import plistlib
 import shutil
 import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from ucasdesk import __version__
 
 
 def main():
@@ -34,8 +36,8 @@ def main():
         'CFBundleIdentifier': 'com.zhangzhendan.ucas-desktop',
         'CFBundleName': 'UCAS Desktop',
         'CFBundlePackageType': 'APPL',
-        'CFBundleShortVersionString': '0.5.2',
-        'CFBundleVersion': '0.5.2',
+        'CFBundleShortVersionString': __version__.split('-')[0],
+        'CFBundleVersion': __version__.split('-')[0],
         'LSMinimumSystemVersion': '13.0',
         'NSHighResolutionCapable': True,
     }

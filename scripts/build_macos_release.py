@@ -13,8 +13,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from ucasdesk.portable import archive_url, download, unpack_repo, stamp_module
 from ucasdesk.module_build import prepare_mooc
+from ucasdesk import __version__
 
-VERSION = '0.5.2-mac.1'
+VERSION = __version__
 PYTHON = '3.12.14'
 PBS = '20260924'
 NODE = '24.21.0'
@@ -150,7 +151,7 @@ int main(int argc, char **argv) {
          '-Xlinker', '-sectcreate', '-Xlinker', '__TEXT', '-Xlinker', '__info_plist', '-Xlinker', helper_plist])
     run([python, '-c', 'from PIL import Image; import sys; Image.open(sys.argv[1]).save(sys.argv[2], format="ICNS")', ROOT / 'assets/app.png', resources / 'app.icns'], env=env)
     with (contents / 'Info.plist').open('wb') as f:
-        plistlib.dump({'CFBundleExecutable': 'UCAS Desktop', 'CFBundleIdentifier': 'com.zhangzhendan.ucas-desktop', 'CFBundleName': 'UCAS Desktop', 'CFBundleDisplayName': 'UCAS Desktop', 'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': '0.5.2', 'CFBundleVersion': '0.5.2.1', 'CFBundleIconFile': 'app.icns', 'LSMinimumSystemVersion': '13.0', 'NSHighResolutionCapable': True, 'NSCalendarsUsageDescription': usage, 'NSCalendarsFullAccessUsageDescription': usage}, f)
+        plistlib.dump({'CFBundleExecutable': 'UCAS Desktop', 'CFBundleIdentifier': 'com.zhangzhendan.ucas-desktop', 'CFBundleName': 'UCAS Desktop', 'CFBundleDisplayName': 'UCAS Desktop', 'CFBundlePackageType': 'APPL', 'CFBundleShortVersionString': VERSION.split('-')[0], 'CFBundleVersion': VERSION.split('-')[0], 'CFBundleIconFile': 'app.icns', 'LSMinimumSystemVersion': '13.0', 'NSHighResolutionCapable': True, 'NSCalendarsUsageDescription': usage, 'NSCalendarsFullAccessUsageDescription': usage}, f)
     # Ad-hoc signing guarantees integrity; it is NOT Apple Developer ID notarization.
     run(['codesign', '--force', '--deep', '--sign', '-', app])
     run(['codesign', '--verify', '--deep', '--strict', '--verbose=2', app])

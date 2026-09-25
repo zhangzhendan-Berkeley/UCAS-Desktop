@@ -6,6 +6,8 @@
 
 ## 下载与安装（v0.5.2）
 
+开发分支当前为 **[v0.5.3-rc.1 候选源码](docs/releases/v0.5.3-rc.1.md)**：仅验证选课等待、提交前会话恢复及未知结果不重提。稳定安装包仍使用下面的链接；候选版不自动更新本地程序。[Issue #2 审核记录](docs/issue-2-review.md)。
+
 **Windows 普通用户：下载 [Windows x64 便携 ZIP](https://github.com/zhangzhendan-Berkeley/UCAS-Desktop/releases/tag/v0.5.2)**，全部解压后双击 `UCAS桌面助手.exe`。包含 Python、Node、慕课依赖和课表，无需自行安装开发环境。
 
 - 首次使用讲座/选课，或组件报错：进入 **设置与更新 → 检查并修复功能组件**。按本版固定版本下载、构建、验证，成功才替换；原组件自动备份。修复过程中不启动相关任务。
@@ -351,6 +353,8 @@ node tests/lecture_portal_smoke.mjs
 ## 参考与致谢
 
 ### 社区贡献
+
+- **[@shcw0405](https://github.com/shcw0405)**：在 [Issue #2](https://github.com/zhangzhendan-Berkeley/UCAS-Desktop/issues/2) 提出长期等待选课时的会话问题及建议；本次采纳定时登录、提交前限次恢复和避免不确定结果重提的部分。
 
 - **[cuizixian0328](https://github.com/zhangzhendan-Berkeley/UCAS-Desktop/commit/010c2ed9e703)**（Git 提交署名）：macOS 账号存储、浏览器选择、字体、任务进程、安装说明、手机面板及测试适配；另有缺少讲座模块时的错误提示修正。相关改动已适配到当前版本。
 - **[@zihenghe04](https://github.com/zihenghe04)**（PR 提交账号）：通过 [PR #1](https://github.com/zhangzhendan-Berkeley/UCAS-Desktop/pull/1) 提交整合后的 macOS 支持。

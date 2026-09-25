@@ -9,11 +9,13 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from ucasdesk import __version__
 
 
 def main():
     arch = 'arm64' if platform.machine() == 'arm64' else 'x64'
-    original = ROOT / f'dist/UCAS-Desktop-0.5.2-mac.1-macOS-{arch}/UCAS Desktop.app'
+    original = ROOT / f'dist/UCAS-Desktop-{__version__}-macOS-{arch}/UCAS Desktop.app'
     area = ROOT / 'data/mac-verify'
     area.mkdir(parents=True)
     relocated = area / 'Moved folder with spaces/UCAS Desktop.app'

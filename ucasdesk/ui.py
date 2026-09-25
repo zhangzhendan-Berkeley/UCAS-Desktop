@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
 
 from .core import ROOT, DATA, LOGS, VENDOR, PYTHON, NODE, Vault, Store, read_json, write_json, redact, check_updates, stage_updates
 from .jobs import Jobs
+from . import __version__
 from .iclass import IClass
 from .api import LocalAPI
 from .automation import Automation
@@ -156,7 +157,7 @@ class Window(LecturesMixin, DashboardMixin, QMainWindow):
         self.nav.setObjectName('navigation')
         self.nav.addItems(['概览', '课程签到', '人文/科研讲座', '国科大在线', '选课规划', '自动选课', '任务与日志', '设置与更新', '个人信息'])
         side.addWidget(self.nav)
-        self.runtime_hint = label('本地运行 · v0.5.2\n关闭窗口后托盘运行\n右键托盘可退出程序', 'sideText')
+        self.runtime_hint = label(f'本地运行 · v{__version__}\n关闭窗口后托盘运行\n右键托盘可退出程序', 'sideText')
         side.addWidget(self.runtime_hint)
         horizontal.addWidget(sidebar)
         self.pages = QStackedWidget()
@@ -833,6 +834,7 @@ class Window(LecturesMixin, DashboardMixin, QMainWindow):
         layout.addWidget(label('有空位时识别验证码并提交；成功以课程进入预选列表为准。触发限流、提交结果不明或其他拒绝时会停止相应任务。', 'banner'))
         layout.addLayout(row(button('仅检查目标课程，不提交', lambda: self.run_selection(True)), button('开始自动选课', lambda: self.run_selection(False), True)))
         layout.addWidget(label('结束后请核对 SEP 的预选列表，并完成学校要求的选课单审核。', 'muted'))
+        layout.addWidget(label('定时任务提前 5 分钟准备登录；需要人工验证时请及时处理。提交前明确失效最多恢复 2 次，提交结果未知时不自动重提。', 'muted'))
 
     def refresh_selection_courses(self):
         codes = list(dict.fromkeys(self.course_codes.toPlainText().split()))

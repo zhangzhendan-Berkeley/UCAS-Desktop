@@ -15,6 +15,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from ucasdesk.portable import download, archive_url, unpack_repo
+from ucasdesk import __version__
 
 PYTHON_URL = 'https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip'
 PYTHON_SHA = '4acbed6dd1c744b0376e3b1cf57ce906f9dc9e95e68824584c8099a63025a3c3'
@@ -71,7 +72,7 @@ def trim_qt(output):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--version', default='0.5.2')
+    parser.add_argument('--version', default=__version__)
     parser.add_argument('--no-zip', action='store_true')
     parser.add_argument('--resume', action='store_true', help='Resume this version only before it has ever been run')
     args = parser.parse_args()
