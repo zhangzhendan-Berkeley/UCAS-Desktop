@@ -140,6 +140,19 @@ class AutomationTests(unittest.TestCase):
                 restarted.tick(datetime(2026, 9, 16, 9, 5))
                 self.assertEqual(len(jobs.calls), 2)
 
+    def test_lecture_protection_payload_survives_restart(self):
+        for kind in ('lecture', 'science'):
+            for enabled in (False, True):
+                with self.subTest(kind=kind, protection=enabled), tempfile.TemporaryDirectory() as tmp:
+                    jobs = Jobs()
+                    first = Automation(jobs, Vault(), directory=Path(tmp)); first.timer.stop()
+                    first.save(kind, {'enabled': True, 'book': True, 'stopOnUnknown': enabled})
+                    restarted = Automation(jobs, Vault(), directory=Path(tmp)); restarted.timer.stop()
+                    with patch.object(Path, 'exists', return_value=True):
+                        restarted.tick(datetime(2026, 9, 28, 14, 1))
+                    self.assertEqual(len(jobs.calls), 1)
+                    self.assertIs(jobs.calls[0][-1]['stopOnUnknown'], enabled)
+
     def test_daily_filters_ended_signed_and_duplicate_courses(self):
         course = {'id': '1234567', 'classBeginTime': '2026-09-16 10:00:00',
                   'classEndTime': '2026-09-16 11:00:00', 'signStatus': '0'}

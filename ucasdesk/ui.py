@@ -552,6 +552,10 @@ class Window(LecturesMixin, DashboardMixin, QMainWindow):
         science = self.automation.config.get('science', {})
         self.science_hours = QLineEdit(','.join(map(str, science.get('hours', range(24)))))
         self.science_hours.setPlaceholderText('0–23 的小时，用英文逗号分隔')
+        self.lecture_stop_unknown = QCheckBox('人文：结果不明时暂停后续报名（可选）')
+        self.lecture_stop_unknown.setChecked(clock.get('stopOnUnknown', False))
+        self.science_stop_unknown = QCheckBox('科研：结果不明时暂停后续报名（可选）')
+        self.science_stop_unknown.setChecked(science.get('stopOnUnknown', False))
         self.lecture_minutes, self.science_minutes = {}, {}
         for values, settings in ((self.lecture_minutes, clock), (self.science_minutes, science)):
             for minute in (1, 31):
@@ -563,10 +567,12 @@ class Window(LecturesMixin, DashboardMixin, QMainWindow):
         layout.addWidget(self.lecture_filter_hint)
         layout.addWidget(self.lecture_clock)
         layout.addWidget(self.lecture_book)
+        layout.addWidget(self.lecture_stop_unknown)
         layout.addLayout(row(label('人文检查小时'), self.lecture_hours, *self.lecture_minutes.values()))
         self.science_daily = QCheckBox('开启科研讲座查询与自动报名（仅雁栖湖；同一开始时间只报一场，优先人工智能相关）')
         self.science_daily.setChecked(self.automation.config.get('science', {}).get('enabled', False))
         layout.addWidget(self.science_daily)
+        layout.addWidget(self.science_stop_unknown)
         layout.addLayout(row(label('科研检查小时'), self.science_hours, *self.science_minutes.values()))
         layout.addLayout(row(button('保存自动任务', self.save_lecture_plan, True),
                              button('停用人文任务', lambda: self.disable_plan('lecture')),
@@ -597,6 +603,8 @@ class Window(LecturesMixin, DashboardMixin, QMainWindow):
                     raise ValueError(f'{title}检查小时应为 0–23 的整数，用逗号分隔。')
                 plans[kind] = self.automation.config.get(kind, {}) | {'enabled': enabled, 'hours': hours,
                     'minutes': [m for m, check in checks.items() if check.isChecked()]}
+            plans['lecture']['stopOnUnknown'] = self.lecture_stop_unknown.isChecked()
+            plans['science']['stopOnUnknown'] = self.science_stop_unknown.isChecked()
             days = [(index + 1) % 7 for index, c in enumerate(self.days) if c.isChecked()]
             if plans['lecture']['enabled'] and not days:
                 raise ValueError('请至少选择一天。')
@@ -656,7 +664,7 @@ class Window(LecturesMixin, DashboardMixin, QMainWindow):
                 raise ValueError('请至少选择一天。')
             payload = self.account('sep') | {'preview': preview, 'scheduled': scheduled, 'days': days,
                       'from': '00:00', 'to': '23:59',
-                      'interval': 30, 'rounds': 1}
+                      'interval': 30, 'rounds': 1, 'stopOnUnknown': self.lecture_stop_unknown.isChecked()}
             title = '人文讲座 · ' + ('候选预览' if preview else '定时预约' if scheduled else '报名一轮')
             self.start_job('lecture', title, NODE, [ROOT / 'adapters/lecture.mjs'], payload)
         except Exception as exc:

@@ -31,6 +31,7 @@ try {
   writeFileSync(configPath, JSON.stringify({
     runtime: { mode: 'single', dryRun: Boolean(p.preview), headless: false, statePath: join(dir, p.science ? 'science-state.json' : 'state.json') },
     targets: { lectureUrl: p.lectureUrl || 'https://xkcts.ucas.ac.cn:8443/subject/humanityLecture' },
+    stopOnUnknown: p.stopOnUnknown === true,
     scienceMode: Boolean(p.scienceMode),
     onePerStartTime: Boolean(p.onePerStartTime),
     scienceKeywords: p.scienceKeywords || [],
@@ -59,7 +60,8 @@ try {
     for (const lecture of summary.candidates) console.log(`候选：${lecture.title} | ${lecture.startTimeText} | ${lecture.location || ''}`);
     console.log(JSON.stringify({候选数量: summary.candidates.length, 报名结果: summary.attempts, 停止原因: summary.stopReason, 配额: summary.quota}));
     for (const item of summary.skipped) console.log(JSON.stringify({event:'lecture.decision', title:item.lecture.title, time:item.lecture.startTimeText, reason:item.reason, detail:summarizeDecisionReasonWithRules(item,config.timeWindows)}));
-    if (summary.attempts.some(x => x.outcome === 'unknown')) throw new Error('存在报名结果不明确的讲座，停止巡检，请在学校页面核对。');
+    if (!config.stopOnUnknown && summary.attempts.some(x => x.outcome === 'unknown')) console.log('部分讲座结果不明，已按设置继续检查其他场次；未确认结果不计入预约成功。');
+    if (config.stopOnUnknown && summary.attempts.some(x => x.outcome === 'unknown')) throw new Error('存在报名结果不明确的讲座，停止巡检，请在学校页面核对。');
     if (summary.quota.bookedCount !== null && summary.quota.requiredCount !== null && summary.quota.bookedCount >= summary.quota.requiredCount) break;
     if (n + 1 < rounds) {
       const minutes = Math.max(5, Number(p.interval || 30));

@@ -4,24 +4,25 @@
 
 面向国科大集中教学场景的 **Windows / macOS / Linux 桌面集成工具**：把轻新课堂签到、讲座预约、选课规划、选课自动化及国科大在线视频/文档任务放在同一界面，支持系统托盘后台运行。
 
-## 下载与安装（v0.5.2）
+## 下载与安装（v0.5.3）
 
-开发分支当前为 **[v0.5.3-rc.2 候选源码](docs/releases/v0.5.3-rc.2.md)**：人文与科研讲座可分别选择检查小时及每小时 01 / 31 分；包含 rc.1 的选课会话修复。稳定安装包仍使用下面的链接；候选版不自动更新本地程序。[Issue #2 审核记录](docs/issue-2-review.md)。
+本版统一提供 Windows、Mac Apple Silicon 与 Mac Intel 安装包。[v0.5.3 更新说明](docs/releases/v0.5.3.md)；[Issue #2 审核记录](docs/issue-2-review.md)。
 
-**Windows 普通用户：下载 [Windows x64 便携 ZIP](https://github.com/zhangzhendan-Berkeley/UCAS-Desktop/releases/tag/v0.5.2)**，全部解压后双击 `UCAS桌面助手.exe`。包含 Python、Node、慕课依赖和课表，无需自行安装开发环境。
+**Windows 普通用户：下载 [Windows x64 便携 ZIP](https://github.com/zhangzhendan-Berkeley/UCAS-Desktop/releases/tag/v0.5.3)**，全部解压后双击 `UCAS桌面助手.exe`。包含 Python、Node、慕课依赖和课表，无需自行安装开发环境。
 
 - 首次使用讲座/选课，或组件报错：进入 **设置与更新 → 检查并修复功能组件**。按本版固定版本下载、构建、验证，成功才替换；原组件自动备份。修复过程中不启动相关任务。
 - **从旧版升级**：先从托盘退出新旧程序，解压新版到新文件夹，双击新版的 **迁移旧版数据.cmd**，选择旧版文件夹。账号、课表、任务配置、慕课登录状态一并保留；旧安装不变。Windows 密码须在同一电脑、同一 Windows 用户下读取。
 - 浏览器需安装 Edge 或 Chrome；首次 SEP 查询可能联网下载匹配的驱动。详见 [便携版说明](docs/便携版说明.md)。
-- **macOS 普通用户**：下载 [Mac 独立版](https://github.com/zhangzhendan-Berkeley/UCAS-Desktop/releases/tag/v0.5.2-mac.1)，按芯片选择 arm64（Apple Silicon）或 x64（Intel）。解压将 `.app` 拖到“应用程序”，无需 Python/Node/Xcode。保留课程和讲座同步到 iCloud UCAS 日历，详见 [Mac 便携版与日历说明](docs/macOS便携版说明.md)。
+- **macOS 普通用户**：下载 [Mac 独立版](https://github.com/zhangzhendan-Berkeley/UCAS-Desktop/releases/tag/v0.5.3)，按芯片选择 arm64（Apple Silicon）或 x64（Intel）。解压将 `.app` 拖到“应用程序”，无需 Python/Node/Xcode。保留课程和讲座同步到 iCloud UCAS 日历，详见 [Mac 便携版与日历说明](docs/macOS便携版说明.md)。
 - 源码安装：[macOS](docs/macOS安装.md)、[Linux](docs/Linux安装.md)。源码 ZIP 不包含运行环境；`build_macos_app.py` 是本地源码启动器，独立发行包使用 `build_macos_release.py`。
 
 ### 本版修复
 
-- 慕课适配学校新版章节目录，兼容旧版及嵌套学习页面；加入 **仅诊断章节页面**，等待时显示具体状态。
-- 修复讲座反复安装叠补丁、遗漏 `background.js`、半安装状态误判可用等问题。源码安装与便携修复使用同一套生成规则。
-- 应用发行版本与第三方上游提交分开显示；组件修复只使用已固定依赖，不追逐未经验证的上游最新版。
-- 恢复提供最新版 Windows 便携包、源码包和 SHA256 校验文件。发布说明及验证范围见 [v0.5.2](docs/releases/v0.5.2.md)。
+- 讲座明确提示“未到预约时间或已过期”时跳过当前场次，继续检查其他讲座，下次仍可重查。
+- 人文、科研分别提供 **结果不明时暂停后续报名** 开关，默认关闭。关闭时继续处理，日志仍保留真实的“结果不明”，不会计作预约成功或人数已满；开启后遇到未知结果才暂停。
+- 两类讲座分别选择检查小时和每小时 **01 / 31 分**；修改后点击 **保存自动任务**。手动“立即报名一轮”使用人文开关当前值。
+- 纳入候选版已验证的选课登录预热与会话恢复修复；保留慕课兼容、后台浏览器和 Mac iCloud 日历功能。
+- Windows / Mac 使用同一讲座补丁和回归测试，完整验证范围见 [更新说明](docs/releases/v0.5.3.md)。
 
 ![应用首页](docs/desktop-dashboard.png)
 

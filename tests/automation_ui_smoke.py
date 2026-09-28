@@ -53,12 +53,17 @@ with isolated_keychain(), tempfile.TemporaryDirectory() as tmp:
                 window.daily_enabled.setChecked(True)
                 window.save_daily_plan()
                 assert window.automation.enabled('course')
+                assert not window.lecture_stop_unknown.isChecked()
+                assert not window.science_stop_unknown.isChecked()
+                window.lecture_stop_unknown.setChecked(True)
                 window.lecture_clock.setChecked(True)
                 window.lecture_book.setChecked(True)
                 window.lecture_hours.setText('8,9,18')
                 window.save_lecture_plan()
                 assert window.automation.config['lecture']['hours'] == [8, 9, 18]
                 assert window.automation.config['lecture']['book']
+                assert window.automation.config['lecture']['stopOnUnknown'] is True
+                assert window.automation.config['science']['stopOnUnknown'] is False
                 window.lecture_minutes[1].setChecked(False)
                 window.lecture_minutes[31].setChecked(True)
                 window.science_daily.setChecked(True)

@@ -23,6 +23,11 @@ try {
     assert.equal(await page.evaluate(() => Boolean(window.clicked)), isYanqiLocation(location));
     assert.equal(result.outcome, isYanqiLocation(location) ? 'registered' : 'unknown');
   }
+  // A clear server rejection is temporary and must not be reported as unknown.
+  await page.locator('button').evaluate(el => { el.textContent='报名'; el.setAttribute('onclick', "alert('目前未到讲座预约时间或讲座预约时间已过，无法预约！')"); });
+  const rejected = await registerLecture(page, (await extractLectureSnapshot(page)).lectures[0], { info() {} });
+  assert.equal(rejected.outcome, 'outside-window');
+  assert.match(rejected.detail, /无法预约/);
   // A venue changed between discovery and submission must not be clicked.
   const candidate = (await extractLectureSnapshot(page)).lectures[0];
   await page.locator('td').nth(1).evaluate(el => { el.textContent = '中关村教学楼'; });

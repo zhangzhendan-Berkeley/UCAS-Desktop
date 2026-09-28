@@ -1,0 +1,70 @@
+--- a/src/register.ts
++++ b/src/register.ts
+@@ -72,6 +72,9 @@
+   await page.waitForTimeout(1500);
+ 
+   if (dialogMessage) {
++    if (classifyRegistrationFeedback(dialogMessage) === "outside-window") {
++      return { lectureId: lecture.id, title: lecture.title, outcome: "outside-window", detail: dialogMessage };
++    }
+     if (/已超过人数限制|人数已满|预约已满|名额已满|满额/.test(dialogMessage)) {
+       return {
+         lectureId: lecture.id,
+@@ -120,7 +123,8 @@
+   };
+ }
+ 
+-export function classifyRegistrationFeedback(text: string): "registered" | "full" | "unknown" {
++export function classifyRegistrationFeedback(text: string): "registered" | "full" | "outside-window" | "unknown" {
++  if (/^(?:目前)?未到讲座预约时间或讲座预约时间已过[，,]?无法预约[！!。.]?$/.test(normalizeWhitespace(text))) return "outside-window";
+   if (/失败|未成功|不成功|错误|异常/.test(text)) return "unknown";
+   if (/人数已满|预约已满|名额已满|满额|已超过人数限制/.test(text)) return "full";
+   if (/预约成功|报名成功|选课成功|已预约|已报名|已经预约过|取消预约|取消报名/.test(text)) return "registered";
+--- a/src/workflow.ts
++++ b/src/workflow.ts
+@@ -202,7 +202,7 @@
+       const result = await registerLecture(page, lecture, logger);
+       attempts.push(result);
+       logger.info("run.register.result", { ...result });
+-      if (result.outcome === "unknown") {
++      if (result.outcome === "unknown" && config.stopOnUnknown) {
+         stopReason = "本轮报名结果不明确，停止后续报名并等待人工核对";
+         break;
+       }
+--- a/src/types.ts
++++ b/src/types.ts
+@@ -35,6 +35,7 @@
+   scienceMode?: boolean;
+   scienceKeywords?: string[];
+   onePerStartTime?: boolean;
++  stopOnUnknown?: boolean;
+   statePath: string;
+   headless: boolean;
+   dryRun: boolean;
+@@ -108,7 +109,7 @@
+ export interface RegistrationAttemptResult {
+   lectureId: string;
+   title: string;
+-  outcome: "registered" | "already-booked" | "full" | "unknown";
++  outcome: "registered" | "already-booked" | "full" | "outside-window" | "unknown";
+   detail: string;
+ }
+ 
+--- a/src/config.ts
++++ b/src/config.ts
+@@ -36,6 +36,7 @@
+ const timePeriodSchema = z.tuple([z.string().min(1), z.string().min(1)]);
+ 
+ const fileSchema = z.object({
++  stopOnUnknown: z.boolean().optional(),
+   scienceMode: z.boolean().optional(),
+   onePerStartTime: z.boolean().optional(),
+   scienceKeywords: z.array(z.string()).optional(),
+@@ -123,6 +124,7 @@
+   );
+ 
+   return {
++    stopOnUnknown: parsedFile.stopOnUnknown ?? false,
+     configPath,
+     configFileExists,
+     username: env.username,

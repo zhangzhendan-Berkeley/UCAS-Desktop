@@ -45,6 +45,7 @@ def main():
     run([python, '-c', "import json; from pathlib import Path; from ucasdesk.portable import install_module; r=Path.cwd(); mods=json.loads((r/'modules.json').read_text()); [install_module(r,m) for m in mods if m['id'] in ('lecture','selection')]"])
     run([python, 'scripts/check_install.py'])
     run([node, 'tests/lecture_portal_smoke.mjs'])
+    run([node, 'tests/lecture_campus_smoke.mjs'])
     run([node, 'tests/lecture_captcha_smoke.mjs'])
     (target / 'adapters/mooc_helpers.mjs').unlink()
     (target / 'vendor/ucas-humanity-lecture-bot/dist/src/background.js').unlink()

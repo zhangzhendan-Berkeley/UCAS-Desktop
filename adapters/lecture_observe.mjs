@@ -39,7 +39,7 @@ export async function observeAndBook(config, logger, dir, payload, runAutomation
   }
   const decisions = logDecisions(snapshot, config);
   if (payload.preview || !payload.book) return;
-  if (history.bookingPending) {
+  if (config.stopOnUnknown && history.bookingPending) {
     console.log('此前自动报名结果未确认，保持只读观察。请核对学校记录后，在应用中解除报名暂停。');
     return;
   }
@@ -48,14 +48,15 @@ export async function observeAndBook(config, logger, dir, payload, runAutomation
     console.log('本轮没有符合所选星期、时间及页面配额条件的可报名讲座。');
     return;
   }
-  // Persist before any write: errors/crashes cannot silently replay a submission next slot.
+  // Retain pending evidence; it blocks later writes only when the user enables protection.
   history.bookingPending = true;
   saveHistory(dir, history);
   const summary = await runAutomation({ ...config, headless: false, dryRun: false }, logger);
   console.log(JSON.stringify({ event: 'lecture.booking', attempts: summary.attempts, stopReason: summary.stopReason }));
-  if (summary.attempts.some(a => a.outcome === 'unknown')) {
+  if (config.stopOnUnknown && summary.attempts.some(a => a.outcome === 'unknown')) {
     throw new Error('存在报名结果不明确的讲座，自动报名已暂停；后续定点观察继续。');
   }
+  if (summary.attempts.some(a => a.outcome === 'unknown')) console.log('部分讲座结果不明，已按设置继续；未确认结果不计入预约成功。');
   history.bookingPending = false;
   saveHistory(dir, history);
 }

@@ -129,6 +129,7 @@ class Automation(QObject):
                             [ROOT / 'adapters/lecture.mjs'], account | {
                                 'action': 'science-book', 'lectureUrl': 'https://xkcts.ucas.ac.cn:8443/subject/lecture',
                                 'science': True, 'scienceMode': True, 'onePerStartTime': True,
+                                'stopOnUnknown': config.get('stopOnUnknown', False),
                                 'scienceKeywords': ['人工智能', '机器学习', '深度学习', '神经网络', '大模型', '自然语言处理', '计算机视觉', '机器人', '具身智能'],
                                 'preview': False})
             self.messages[kind] = f'{slot} 已启动科研讲座报名；结果见任务日志'
