@@ -51,7 +51,8 @@ jobs:
         run: |
           for file in adapters/*.mjs mobile/*.mjs; do node --check "$file"; done
           node --test tests/*.test.mjs
-          npm --prefix vendor/ucas-humanity-lecture-bot test
+          # Upstream schedule fixtures expect Asia/Shanghai local time.
+          TZ=Asia/Shanghai npm --prefix vendor/ucas-humanity-lecture-bot test
       - name: Offline UI and process tests
         run: |
           for file in automation_ui_smoke profile_planner_smoke dashboard_ui_smoke refresh_ui_smoke lectures_ui_smoke macos_jobs_smoke; do
