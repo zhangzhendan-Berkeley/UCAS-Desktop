@@ -460,14 +460,14 @@ class Window(LecturesMixin, DashboardMixin, QMainWindow):
 
     def disable_plan(self, kind):
         self.automation.disable(kind)
-        (self.daily_enabled if kind == 'course' else self.lecture_clock).setChecked(False)
+        {'course': self.daily_enabled, 'lecture': self.lecture_clock, 'science': self.science_daily}[kind].setChecked(False)
 
     def refresh_automation(self):
         self.daily_status.setText(self.automation.description('course'))
-        self.lecture_clock_status.setText(self.automation.description('lecture'))
+        self.lecture_clock_status.setText('人文：' + self.automation.description('lecture') + '\n科研：' + self.automation.description('science'))
 
     def stop_all_tasks(self):
-        for kind in ('course', 'lecture'):
+        for kind in ('course', 'lecture', 'science'):
             self.disable_plan(kind)
         self.jobs.stop_all()
 
@@ -543,27 +543,37 @@ class Window(LecturesMixin, DashboardMixin, QMainWindow):
         layout.addWidget(group)
         layout.addLayout(row(button('检查候选讲座', lambda: self.run_lecture(True, False)), button('立即报名一轮', lambda: self.run_lecture(False, False), True)))
         clock = self.automation.config.get('lecture', {})
-        self.lecture_clock = QCheckBox('每小时 01 分检查并记录新讲座')
+        self.lecture_clock = QCheckBox('开启人文讲座定点检查并记录新讲座')
         self.lecture_clock.setChecked(clock.get('enabled', False))
         self.lecture_book = QCheckBox('同时自动报名符合筛选条件的雁栖湖讲座')
         self.lecture_book.setChecked(clock.get('book', False))
         self.lecture_hours = QLineEdit(','.join(map(str, clock.get('hours', range(24)))))
         self.lecture_hours.setPlaceholderText('0–23 的小时，用英文逗号分隔')
+        science = self.automation.config.get('science', {})
+        self.science_hours = QLineEdit(','.join(map(str, science.get('hours', range(24)))))
+        self.science_hours.setPlaceholderText('0–23 的小时，用英文逗号分隔')
+        self.lecture_minutes, self.science_minutes = {}, {}
+        for values, settings in ((self.lecture_minutes, clock), (self.science_minutes, science)):
+            for minute in (1, 31):
+                values[minute] = QCheckBox(f'每小时 {minute:02d} 分')
+                values[minute].setChecked(minute in settings.get('minutes', [1]))
         for index, check in enumerate(self.days):
             check.setChecked((index + 1) % 7 in clock.get('days', [0, 1, 2, 3, 4, 5, 6]))
         self.lecture_filter_hint = label('自动任务会读取全部讲座，只报名地点明确为雁栖湖的场次。', 'muted')
         layout.addWidget(self.lecture_filter_hint)
         layout.addWidget(self.lecture_clock)
         layout.addWidget(self.lecture_book)
-        self.science_daily = QCheckBox('每小时 01 分查询并自动报名科研讲座（仅雁栖湖；同一开始时间只报一场，优先人工智能相关）')
+        layout.addLayout(row(label('人文检查小时'), self.lecture_hours, *self.lecture_minutes.values()))
+        self.science_daily = QCheckBox('开启科研讲座查询与自动报名（仅雁栖湖；同一开始时间只报一场，优先人工智能相关）')
         self.science_daily.setChecked(self.automation.config.get('science', {}).get('enabled', False))
         layout.addWidget(self.science_daily)
-        layout.addLayout(row(label('人文自动检查小时'), self.lecture_hours))
+        layout.addLayout(row(label('科研检查小时'), self.science_hours, *self.science_minutes.values()))
         layout.addLayout(row(button('保存自动任务', self.save_lecture_plan, True),
-                             button('停用自动任务', lambda: self.disable_plan('lecture'))))
+                             button('停用人文任务', lambda: self.disable_plan('lecture')),
+                             button('停用科研任务', lambda: self.disable_plan('science'))))
         self.lecture_clock_status = label('', 'muted')
         layout.addWidget(self.lecture_clock_status)
-        layout.addWidget(label('人文讲座按保存的检查小时自动运行；科研讲座每小时 01 分查询并自动报名。电脑需保持运行，任务结果见“任务与日志”。', 'muted'))
+        layout.addWidget(label('两类讲座分别保存小时与 01 / 31 分开关；两个时点均不勾选时不轮询。设置需点击保存。电脑需保持运行，任务结果见“任务与日志”。', 'muted'))
         layout.addWidget(label('下方同步显示今日讲座、听讲进度与提醒设置；报名成功后请按现场要求完成考勤。', 'banner'))
 
     def set_lecture_all_day(self, enabled):
@@ -575,20 +585,28 @@ class Window(LecturesMixin, DashboardMixin, QMainWindow):
 
     def save_lecture_plan(self):
         try:
-            if not self.lecture_clock.isChecked():
-                self.disable_plan('lecture')
-                self.automation.save('science', {'enabled': self.science_daily.isChecked()})
-                return
-            self.account('sep')
-            hours = sorted({int(x.strip()) for x in self.lecture_hours.text().replace('，', ',').split(',') if x.strip()})
+            plans = {}
+            for kind, title, enabled, field, checks in (
+                ('lecture', '人文', self.lecture_clock.isChecked(), self.lecture_hours, self.lecture_minutes),
+                ('science', '科研', self.science_daily.isChecked(), self.science_hours, self.science_minutes)):
+                try:
+                    hours = sorted({int(x.strip()) for x in field.text().replace('，', ',').split(',') if x.strip()})
+                except ValueError:
+                    raise ValueError(f'{title}检查小时应为 0–23 的整数，用逗号分隔。') from None
+                if not hours or any(x < 0 or x > 23 for x in hours):
+                    raise ValueError(f'{title}检查小时应为 0–23 的整数，用逗号分隔。')
+                plans[kind] = self.automation.config.get(kind, {}) | {'enabled': enabled, 'hours': hours,
+                    'minutes': [m for m, check in checks.items() if check.isChecked()]}
             days = [(index + 1) % 7 for index, c in enumerate(self.days) if c.isChecked()]
-            if not hours or any(x < 0 or x > 23 for x in hours):
-                raise ValueError('检查小时应为 0–23 的整数，用逗号分隔。')
-            if not days:
+            if plans['lecture']['enabled'] and not days:
                 raise ValueError('请至少选择一天。')
-            self.automation.save('lecture', {'enabled': True, 'book': self.lecture_book.isChecked(), 'hours': hours,
-                'days': days, 'from': '00:00', 'to': '23:59'})
-            self.automation.save('science', {'enabled': self.science_daily.isChecked()})
+            if any(plan['enabled'] for plan in plans.values()):
+                self.account('sep')
+            plans['lecture'].update(book=self.lecture_book.isChecked(), days=days, **{'from':'00:00','to':'23:59'})
+            for kind, plan in plans.items():
+                if not plan['enabled']:
+                    self.automation.disable(kind)
+                self.automation.save(kind, plan)
             self.automation.tick()
         except Exception as exc:
             self.error(str(exc))

@@ -74,6 +74,25 @@ class AutomationTests(unittest.TestCase):
             restarted.tick(datetime(2026, 9, 18, 13))
             self.assertEqual(len(jobs.calls), 4, 'Re-enabling a stopped plan must work on the same day')
 
+    def test_independent_minutes_hours_and_restart(self):
+        self.assertEqual(lecture_slot(datetime(2026,9,28,14,31),[14],[31]), '2026-09-28T14:31')
+        self.assertIsNone(lecture_slot(datetime(2026,9,28,14,1),[14],[31]))
+        self.assertIsNone(lecture_slot(datetime(2026,9,28,14,31),[14],[]))
+        self.assertIsNone(next_lecture_slot(datetime(2026,9,28,14,0),[14],[]))
+        self.assertEqual(next_lecture_slot(datetime(2026,9,28,14,1),[14],[1,31]),datetime(2026,9,28,14,31))
+        self.assertEqual(next_lecture_slot(datetime(2026,9,28,23,32),[0],[31]),datetime(2026,9,29,0,31))
+        with tempfile.TemporaryDirectory() as tmp:
+            jobs=Jobs();engine=Automation(jobs,Vault(),directory=Path(tmp));engine.timer.stop()
+            engine.save('lecture',{'enabled':True,'hours':[14],'minutes':[31],'book':False})
+            engine.save('science',{'enabled':True,'hours':[15],'minutes':[1]})
+            with patch.object(Path,'exists',return_value=True):
+                for hour,minute in ((14,1),(14,31),(14,31),(15,1),(15,31)):
+                    engine.tick(datetime(2026,9,28,hour,minute))
+            self.assertEqual([call[0] for call in jobs.calls],['lecture-clock','science-daily'])
+            restarted=Automation(jobs,Vault(),directory=Path(tmp));restarted.timer.stop()
+            restarted.tick(datetime(2026,9,28,15,2))
+            self.assertEqual(len(jobs.calls),2)
+
     def test_lecture_restart_dedup_busy_and_no_catchup_storm(self):
         with tempfile.TemporaryDirectory() as tmp:
             # Only module-presence probing is mocked; all scheduler state is real on disk.

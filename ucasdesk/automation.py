@@ -5,19 +5,19 @@ from .core import DATA, ROOT, PYTHON, NODE, read_json, write_json, redact
 import sys
 
 
-def lecture_slot(now, hours):
+def lecture_slot(now, hours, minutes=(1,)):
     """Only the current slot, with a two-minute wake-up grace; never replay a backlog."""
-    for minute in (1,):
+    for minute in sorted(set(minutes) & {1, 31}):
         slot = now.replace(minute=minute, second=0, microsecond=0)
         if slot.hour in hours and 0 <= (now - slot).total_seconds() < 120:
             return slot.isoformat(timespec='minutes')
     return None
 
 
-def next_lecture_slot(now, hours):
+def next_lecture_slot(now, hours, minutes=(1,)):
     for offset in range(49):
         hour = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=offset)
-        for minute in (1,):
+        for minute in sorted(set(minutes) & {1, 31}):
             candidate = hour.replace(minute=minute)
             if candidate > now and candidate.hour in hours:
                 return candidate
@@ -114,7 +114,7 @@ class Automation(QObject):
             self.daily_started = today
             self.messages[kind] = f'{today} 已启动课表检查与定时签到；结果见任务日志'
         elif kind == 'science':
-            slot = lecture_slot(now, list(range(24)))
+            slot = lecture_slot(now, config.get('hours', list(range(24))), config.get('minutes', [1]))
             if not slot or self.state.get('science_slot') == slot:
                 return
             if active & {'lecture', 'lecture-clock', 'science-daily'}:
@@ -133,7 +133,7 @@ class Automation(QObject):
                                 'preview': False})
             self.messages[kind] = f'{slot} 已启动科研讲座报名；结果见任务日志'
         else:
-            slot = lecture_slot(now, config.get('hours', list(range(24))))
+            slot = lecture_slot(now, config.get('hours', list(range(24))), config.get('minutes', [1]))
             if not slot or self.state.get('lecture_slot') == slot:
                 return
             if active & {'lecture', 'lecture-clock', 'science-daily'}:
@@ -155,8 +155,11 @@ class Automation(QObject):
             return '后台计划：未启用'
         message = self.messages.get(kind, '已保存；应用运行时自动执行')
         if kind in ('lecture', 'science'):
-            hours = self.config[kind].get('hours', list(range(24))) if kind == 'lecture' else list(range(24))
-            due = next_lecture_slot(datetime.now(), hours)
+            hours = self.config[kind].get('hours', list(range(24)))
+            minutes = self.config[kind].get('minutes', [1])
+            due = next_lecture_slot(datetime.now(), hours, minutes)
             if due:
                 message += ' · 下次 ' + due.strftime('%m-%d %H:%M')
+            else:
+                message += ' · 未选择检查时点，不会自动运行'
         return message
