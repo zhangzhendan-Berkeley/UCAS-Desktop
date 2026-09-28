@@ -1,0 +1,22 @@
+--- a/tests/schedule.test.ts
++++ b/tests/schedule.test.ts
+@@ -19,16 +19,16 @@
+ 
+   it("computes the next top-of-hour run in the same period", () => {
+     const nextRun = getNextScheduledRun(new Date("2026-03-18T10:23:00"), schedule);
+-    expect(nextRun.toISOString()).toBe("2026-03-18T03:00:00.000Z");
++    expect(nextRun.toISOString()).toBe(new Date("2026-03-18T11:00:00").toISOString());
+   });
+ 
+   it("jumps to the next configured period on the same day", () => {
+     const nextRun = getNextScheduledRun(new Date("2026-03-18T12:30:00"), schedule);
+-    expect(nextRun.toISOString()).toBe("2026-03-18T06:00:00.000Z");
++    expect(nextRun.toISOString()).toBe(new Date("2026-03-18T14:00:00").toISOString());
+   });
+ 
+   it("rolls over to the next day after the last slot", () => {
+     const nextRun = getNextScheduledRun(new Date("2026-03-18T18:30:00"), schedule);
+-    expect(nextRun.toISOString()).toBe("2026-03-19T00:00:00.000Z");
++    expect(nextRun.toISOString()).toBe(new Date("2026-03-19T08:00:00").toISOString());
+   });
+ });

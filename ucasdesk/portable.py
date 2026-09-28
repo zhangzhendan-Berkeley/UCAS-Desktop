@@ -157,6 +157,7 @@ def prepare_lecture(root, directory):
     from .module_build import prepare_science_lecture
     prepare_science_lecture(directory)
     apply_patch_file(directory, root / "patches/lecture-registration-policy.patch")
+    apply_patch_file(directory, root / "patches/lecture-schedule-timezone.patch")
 
 
 def install_module(root, module, manifest=None, log=print, force=False):
