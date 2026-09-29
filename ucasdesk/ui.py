@@ -561,7 +561,7 @@ class Window(LecturesMixin, DashboardMixin, QMainWindow):
                 values[minute].setChecked(minute in settings.get('minutes', [1]))
         for index, check in enumerate(self.days):
             check.setChecked((index + 1) % 7 in clock.get('days', [0, 1, 2, 3, 4, 5, 6]))
-        self.lecture_filter_hint = label('自动任务会读取全部讲座，只报名地点明确为雁栖湖的场次。', 'muted')
+        self.lecture_filter_hint = label('人文按已见整页停止翻页，科研检查到今天之前；只报名地点明确为雁栖湖的场次。', 'muted')
         layout.addWidget(self.lecture_filter_hint)
         layout.addWidget(self.lecture_clock)
         layout.addWidget(self.lecture_book)
