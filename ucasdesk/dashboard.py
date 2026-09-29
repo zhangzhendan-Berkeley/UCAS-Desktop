@@ -27,13 +27,22 @@ class DashboardMixin:
         layout.setSpacing(18)
         self.home_status = label('', 'muted')
         self.refresh_all_button = button('一键刷新全部信息', self.refresh_all, True)
-        self.calendar_import_button = button('同步未来 7 天到 iCloud UCAS', self.import_calendar_week)
+        self.calendar_import_button = button('同步到 iCloud UCAS', self.import_calendar_week)
+        self.calendar_range = QComboBox()
+        for name, days in [('一周（7 天）', 7), ('两周（14 天）', 14), ('一个月（30 天）', 30)]:
+            self.calendar_range.addItem(name, days)
+        from .macos_calendar import selected_days
+        self.calendar_range.setCurrentIndex(self.calendar_range.findData(selected_days(self.settings)))
+        self.calendar_range.currentIndexChanged.connect(self.save_calendar_range)
         import sys
         self.calendar_import_button.setVisible(sys.platform == 'darwin')
+        self.calendar_range.setVisible(sys.platform == 'darwin')
+        self.calendar_range.setToolTip('从今天开始；手动同步和每天 22:00 自动同步共用此范围，选择自动保存。')
         toolbar = QHBoxLayout()
         toolbar.addWidget(self.home_status, 1)
         toolbar.addWidget(button('自定义概览', self.customize_home))
         toolbar.addWidget(self.refresh_all_button)
+        toolbar.addWidget(self.calendar_range)
         toolbar.addWidget(self.calendar_import_button)
         layout.addLayout(toolbar)
         self.refresh_summary = label('学校信息按需同步，后台任务状态每 5 秒更新。', 'muted')
@@ -180,25 +189,30 @@ class DashboardMixin:
         self.apply_home_preferences()
         self.pump_mail()
 
+    def save_calendar_range(self, *_):
+        self.settings['calendar_days'] = self.calendar_range.currentData()
+        write_json(self.activity.path.parent / 'settings.json', self.settings)
+
     def import_calendar_week(self):
         try:
-            from .macos_calendar import sync_range
+            from .macos_calendar import sync_range, selected_days, BEIJING
             from .iclass import IClass
             import sys
             if sys.platform != 'darwin':
                 raise ValueError('此按钮仅支持 macOS 日历；其他系统可使用 ICS 导出。')
             if getattr(self, '_calendar_import_running', False):
                 return
+            days = selected_days(self.settings)
             credentials = self.account('iclass').copy()
             course_scope, sep_scope = scope(self.vault, 'iclass'), scope(self.vault, 'sep')
             self._calendar_import_running = True
             self.calendar_import_button.setEnabled(False)
             def work():
                 client = IClass(**credentials)
-                start = datetime.now().date()
+                start = datetime.now(BEIJING).date()
                 courses = []
                 failures = []
-                for i in range(7):
+                for i in range(days):
                     day = start + timedelta(days=i)
                     date_text = day.strftime('%Y%m%d')
                     try:
@@ -214,8 +228,8 @@ class DashboardMixin:
                 if not failures:
                     self.activity.snapshot(course_scope, 'calendar-courses', {'courses': courses})
                 if not courses and failures:
-                    raise RuntimeError('未来 7 天课表均查询失败：' + '；'.join(failures))
-                result = sync_range(self.activity, course_scope, sep_scope, days=7, courses=courses)
+                    raise RuntimeError(f'未来 {days} 天课表均查询失败：' + '；'.join(failures))
+                result = sync_range(self.activity, course_scope, sep_scope, days=days, courses=courses)
                 if failures:
                     result = (result[0], result[1] + '；课表失败日期：' + '；'.join(failures))
                 return result
@@ -561,7 +575,15 @@ class DashboardMixin:
                 records[part.split('-')[0]]=value
                 self.activity.snapshot(account,'attendance',records)
         if name == 'lecture.calendar' and event.get('kind') in ('humanity', 'science') and isinstance(event.get('rows'), list) and job.get('module') in ('lecture', 'lecture-clock'):
-            self.activity.snapshot(account, 'calendar-' + event['kind'], {k:v for k,v in event.items() if k not in ('event','kind')})
+            value = {k:v for k,v in event.items() if k not in ('event','kind')}
+            if event.get('scope') == 'incremental':
+                previous = self.activity.get_snapshot(account, 'calendar-' + event['kind']).get('payload', {})
+                key = lambda row: (row.get('title'), row.get('time'), row.get('location'))
+                combined = {key(row): row for row in previous.get('rows', [])}
+                for row in value['rows']:
+                    combined[key(row)] = combined.get(key(row), {}) | {k:v for k,v in row.items() if v is not None}
+                value['rows'] = list(combined.values())
+            self.activity.snapshot(account, 'calendar-' + event['kind'], value)
         if name == 'lecture.science-schedule' and isinstance(event.get('rows'), list):
             self.activity.snapshot(account, 'calendar-science', {k:v for k,v in event.items() if k != 'event'})
         if name == 'lecture.attendance' and job.get('module') == 'lecture':

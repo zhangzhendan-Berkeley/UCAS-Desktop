@@ -1,0 +1,59 @@
+--- a/src/filter.ts
++++ b/src/filter.ts
+@@ -28,7 +28,8 @@
+   timeWindows: DailyTimeWindows[]
+ ): LectureDecision {
+   const storedState = getStoredLectureState(state, lecture.id);
+-  if (storedState) {
++  // Capacity is temporary: a fresh available action may represent released seats.
++  if (storedState?.state === "booked") {
+     return {
+       lecture,
+       action: "skip",
+@@ -89,7 +90,7 @@
+     case "quota-reached":
+       return "已达到预约次数要求，停止继续报名";
+     case "local-terminal-state":
+-      return "本地状态已记录为已预约或人数已满";
++      return "本地状态已记录为已预约";
+     case "page-terminal-state":
+       return "页面已显示该讲座处于已预约或人数已满状态";
+     case "time-window-mismatch":
+--- a/src/workflow.ts
++++ b/src/workflow.ts
+@@ -100,7 +100,7 @@
+     if (process.env.UCAS_STORAGE_STATE) {
+       await context.storageState({ path: process.env.UCAS_STORAGE_STATE });
+     }
+-    const snapshot = await extractLectureSnapshot(page);
++    const snapshot = await (config.readLectureSnapshot ? config.readLectureSnapshot(page) : extractLectureSnapshot(page));
+     const recordQuota =
+       snapshot.quota.bookedCount === null || snapshot.quota.requiredCount === null
+         ? await extractQuotaFromRecordPage(page, config.humanityLectureUrl)
+@@ -199,6 +199,7 @@
+     }
+ 
+     for (const lecture of cycleCandidates) {
++      if (config.beforeRegister) await config.beforeRegister(page, lecture);
+       const result = await registerLecture(page, lecture, logger);
+       attempts.push(result);
+       logger.info("run.register.result", { ...result });
+@@ -215,6 +216,7 @@
+         markLectureTerminalState(state, lecture, "full", result.detail);
+       }
+ 
++      await saveState(config.statePath, state);
+       await page.reload({ waitUntil: "domcontentloaded" }).catch(() => undefined);
+       const refreshed = await extractLectureSnapshot(page);
+       const refreshedRecordQuota =
+--- a/src/types.ts
++++ b/src/types.ts
+@@ -36,6 +36,8 @@
+   scienceKeywords?: string[];
+   onePerStartTime?: boolean;
+   stopOnUnknown?: boolean;
++  readLectureSnapshot?: (page: import("playwright").Page) => Promise<LecturePageSnapshot>;
++  beforeRegister?: (page: import("playwright").Page, lecture: LectureRecord) => Promise<void>;
+   statePath: string;
+   headless: boolean;
+   dryRun: boolean;

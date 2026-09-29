@@ -22,7 +22,7 @@ class LecturesMixin:
         self.jobs.ended.connect(self.lecture_information_finished)
         layout = parent_layout or self.page('今日讲座', '人文与科研 · 今日安排、听讲进度与到场提醒（北京时间）')
         layout.addLayout(row(button('刷新讲座与听讲记录', self.refresh_lecture_information, True),
-                             button('立即同步明日到 macOS 日历', self.sync_calendar_now),
+                             button('按概览所选范围同步到 iCloud', self.sync_calendar_now),
                              button('导出到日历（ICS）', self.export_calendar),
                              button('测试弹窗', self.test_lecture_popup)))
         self.lecture_progress = {}
@@ -64,21 +64,7 @@ class LecturesMixin:
             self.error(str(exc))
 
     def sync_calendar_now(self):
-        try:
-            from .macos_calendar import sync_tomorrow
-            from .activity import scope
-            if getattr(self, '_calendar_tomorrow_running', False):
-                return
-            course_scope, sep_scope = scope(self.vault, 'iclass'), scope(self.vault, 'sep')
-            self._calendar_tomorrow_running = True
-            def finish(result=None, error=None):
-                self._calendar_tomorrow_running = False
-                if error: self.error(error)
-                else: self.statusBar().showMessage(result[1])
-            self.background(lambda: sync_tomorrow(self.activity, course_scope, sep_scope),
-                            lambda result: finish(result=result), lambda error: finish(error=error))
-        except Exception as exc:
-            self.error(str(exc))
+        self.import_calendar_week()
 
     def refresh_lecture_information(self):
         from .core import NODE, ROOT

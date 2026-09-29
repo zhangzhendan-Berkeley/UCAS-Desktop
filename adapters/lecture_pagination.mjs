@@ -7,7 +7,7 @@ export function beijingDate(now = new Date()) {
   return `${part('year')}-${part('month')}-${part('day')}`;
 }
 
-export async function collectSchedule(read, advance, {today=beijingDate(), maxPages=100, progress=()=>{}}={}) {
+export async function collectSchedule(read, advance, {today=beijingDate(), maxPages=100, progress=()=>{}, knownKeys=null, rowKey=row=>JSON.stringify([row.title,row.time,row.location])}={}) {
   const rows = [], seenRows = new Set(), seenPages = new Set();
   let previousDate = null, descending = true;
   for (let pages=1; pages<=maxPages; pages++) {
@@ -28,8 +28,9 @@ export async function collectSchedule(read, advance, {today=beijingDate(), maxPa
       else rows.push(row);
     }
     progress({pages, count:rows.length, today});
-    const reason = beforeToday && descending ? 'before-today' : !current.hasNext ? 'last-page' : null;
-    if (reason) return {rows, scope:'today-and-future', complete:true, pages, today, stopReason:reason};
+    const knownPage = knownKeys?.size && current.rows.length && current.rows.every(row => knownKeys.has(rowKey(row)));
+    const reason = beforeToday && descending ? 'before-today' : !current.hasNext ? 'last-page' : knownPage ? 'known-page' : null;
+    if (reason) return {rows, scope:reason === 'known-page' ? 'incremental' : 'today-and-future', complete:reason !== 'known-page', pages, today, stopReason:reason};
     if (!current.rows.length) throw new Error('讲座页面为空但仍有下一页，无法确认分页状态；保留上次结果。');
     if (pages === maxPages) throw new Error('讲座查询达到翻页上限，未确认读取完整；保留上次结果。');
     await advance(current);
@@ -64,7 +65,12 @@ export async function readUpcomingSchedule(page, logger, options={}) {
     if(paging.missingNext) throw new Error('讲座仍有后续页，但未找到可用的下一页按钮；保留上次结果。');
     return {rows,...paging};
   };
-  return collectSchedule(read, async previous=>{
+  return collectSchedule(read, previous => advanceLecturePage(page, previous, read, options), {...options,progress:data=>logger?.info('lecture.pagination',data)});
+}
+
+export async function advanceLecturePage(page, previous, read, options={}) {
+  const initial = new URL(page.url());
+
     const next=page.locator('[data-ucas-next-page="1"]');
     const href=await next.getAttribute('href');
     if(href && !href.startsWith('#') && !href.startsWith('javascript:')) {
@@ -86,7 +92,7 @@ export async function readUpcomingSchedule(page, logger, options={}) {
       }
     }
     throw new Error('讲座翻页超时或页面未变化，未确认读取完整；保留上次结果。');
-  }, {...options,progress:data=>logger?.info('lecture.pagination',data)});
+
 }
 
 // Read status from the same table as the timetable, without submitting actions.

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppConfig } from "../src/types.js";
 
-const mocks = vi.hoisted(() => ({ register: vi.fn(), mark: vi.fn(), save: vi.fn() }));
+const mocks = vi.hoisted(() => ({ register: vi.fn(), mark: vi.fn(), save: vi.fn(), stored: {} as Record<string, any> }));
 vi.mock("playwright", () => ({ chromium: { launch: async () => ({
   newContext: async () => ({ newPage: async () => ({ reload: async () => {} }), close: async () => {} }),
   close: async () => {}
@@ -9,8 +9,8 @@ vi.mock("playwright", () => ({ chromium: { launch: async () => ({
 vi.mock("../src/login.js", () => ({ ensureAuthenticated: async () => {} }));
 vi.mock("../src/register.js", () => ({ registerLecture: mocks.register }));
 vi.mock("../src/state-store.js", () => ({
-  loadState: async () => ({ terminalLectures: {} }), saveState: mocks.save,
-  markLectureTerminalState: mocks.mark, getStoredLectureState: () => null
+  loadState: async () => ({ terminalLectures: mocks.stored }), saveState: mocks.save,
+  markLectureTerminalState: mocks.mark, getStoredLectureState: (state: any, id: string) => state.terminalLectures[id]
 }));
 vi.mock("../src/lecture-page.js", () => ({ extractLectureSnapshot: async () => ({
   quota: { bookedCount: 1, requiredCount: 10, rawText: "fixture" },
@@ -21,7 +21,16 @@ vi.mock("../src/lecture-page.js", () => ({ extractLectureSnapshot: async () => (
 import { runAutomation } from "../src/workflow.js";
 
 describe("lecture batch policy", () => {
-  beforeEach(() => { vi.clearAllMocks(); delete process.env.UCAS_STORAGE_STATE; });
+  beforeEach(() => { vi.clearAllMocks(); mocks.stored = {}; delete process.env.UCAS_STORAGE_STATE; });
+  it('rechecks old full state and registers every currently available lecture', async () => {
+    mocks.stored = {'1': {state:'full'}, '3': {state:'booked'}};
+    mocks.register.mockImplementation(async (_p, lecture) => ({lectureId:lecture.id,title:lecture.title,outcome:'registered',detail:'ok'}));
+    const beforeRegister = vi.fn(async () => {});
+    const result = await runAutomation({...config(false), beforeRegister}, logger);
+    expect(result.attempts.map(a=>a.lectureId)).toEqual(['1','2']);
+    expect(beforeRegister).toHaveBeenCalledTimes(2);
+    expect(mocks.save.mock.calls.length).toBeGreaterThanOrEqual(3);
+  });
   for (const scienceMode of [false, true]) {
     for (const stopOnUnknown of [undefined, false, true]) {
       it(`continues after clear rejection; science=${scienceMode}, protection=${stopOnUnknown}`, async () => {

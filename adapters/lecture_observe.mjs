@@ -1,8 +1,8 @@
+import { bookingTraversal } from './lecture_booking_pages.mjs';
 import { chromium } from '../vendor/ucas-humanity-lecture-bot/node_modules/playwright/index.mjs';
 import { backgroundArgs } from '../vendor/ucas-humanity-lecture-bot/dist/src/background.js';
 import { existsSync } from 'node:fs';
 import { ensureAuthenticated } from '../vendor/ucas-humanity-lecture-bot/dist/src/login.js';
-import { extractLectureSnapshot } from '../vendor/ucas-humanity-lecture-bot/dist/src/lecture-page.js';
 import { loadHistory, saveHistory, observe } from './lecture_history.mjs';
 import { browserLaunchOptions } from './browser_channel.mjs';
 import { isYanqiLocation } from '../vendor/ucas-humanity-lecture-bot/dist/src/campus.js';
@@ -10,6 +10,7 @@ import { logDecisions } from './lecture_diagnostics.mjs';
 
 export async function observeAndBook(config, logger, dir, payload, runAutomation) {
   let history = loadHistory(dir);
+  const traversal = bookingTraversal(config, logger, new Set(Object.keys(history.lectures || {})));
   let snapshot;
   let browser;
   try {
@@ -18,9 +19,9 @@ export async function observeAndBook(config, logger, dir, payload, runAutomation
     const context = await browser.newContext({ storageState: statePath && existsSync(statePath) ? statePath : undefined });
     const page = await context.newPage();
     await ensureAuthenticated(page, { ...config, headless: false }, logger);
-    snapshot = await extractLectureSnapshot(page);
-    console.log(JSON.stringify({event:'lecture.calendar', kind:'humanity', scope:'current-page',
-      rows:snapshot.lectures.map(row=>({title:row.title,time:row.startTimeText,location:row.location}))}));
+    snapshot = await traversal.readLectureSnapshot(page);
+    console.log(JSON.stringify({event:'lecture.calendar', kind:'humanity', scope:'incremental',
+      rows:snapshot.lectures.map(({title,time,start,end,location,registrationStatus,registrationText,department})=>({title,time,start,end,location,registrationStatus,registrationText,department}))}));
     const observed = observe(history, snapshot.lectures.map(row => ({ ...row, yanqi: isYanqiLocation(row.location) })), new Date(), payload.slot);
     history = observed.state;
     saveHistory(dir, history);
@@ -51,8 +52,9 @@ export async function observeAndBook(config, logger, dir, payload, runAutomation
   // Retain pending evidence; it blocks later writes only when the user enables protection.
   history.bookingPending = true;
   saveHistory(dir, history);
-  const summary = await runAutomation({ ...config, headless: false, dryRun: false }, logger);
-  console.log(JSON.stringify({ event: 'lecture.booking', attempts: summary.attempts, stopReason: summary.stopReason }));
+  const summary = await runAutomation({ ...config, ...traversal, headless: false, dryRun: false }, logger);
+  console.log(JSON.stringify({ event: 'lecture.booking', candidateCount: summary.candidates.length, attempts: summary.attempts, stopReason: summary.stopReason }));
+  for (const item of summary.skipped) console.log(JSON.stringify({event:'lecture.decision',title:item.lecture.title,reason:item.reason}));
   if (config.stopOnUnknown && summary.attempts.some(a => a.outcome === 'unknown')) {
     throw new Error('存在报名结果不明确的讲座，自动报名已暂停；后续定点观察继续。');
   }

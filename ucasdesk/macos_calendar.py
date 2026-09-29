@@ -10,6 +10,11 @@ from .lecture_visibility import calendar_lecture
 BEIJING = timezone(timedelta(hours=8))
 
 
+def selected_days(settings):
+    value = settings.get('calendar_days', 7)
+    return value if type(value) is int and value in (7, 14, 30) else 7
+
+
 def helper_command(root=None):
     root = root or Path(__file__).resolve().parents[1]
     binary = root / 'runtime/calendar/ucas-calendar'

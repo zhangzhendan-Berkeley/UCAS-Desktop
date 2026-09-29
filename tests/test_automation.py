@@ -74,24 +74,19 @@ class AutomationTests(unittest.TestCase):
             restarted.tick(datetime(2026, 9, 18, 13))
             self.assertEqual(len(jobs.calls), 4, 'Re-enabling a stopped plan must work on the same day')
 
-    def test_independent_minutes_hours_and_restart(self):
-        self.assertEqual(lecture_slot(datetime(2026,9,28,14,31),[14],[31]), '2026-09-28T14:31')
-        self.assertIsNone(lecture_slot(datetime(2026,9,28,14,1),[14],[31]))
-        self.assertIsNone(lecture_slot(datetime(2026,9,28,14,31),[14],[]))
-        self.assertIsNone(next_lecture_slot(datetime(2026,9,28,14,0),[14],[]))
-        self.assertEqual(next_lecture_slot(datetime(2026,9,28,14,1),[14],[1,31]),datetime(2026,9,28,14,31))
-        self.assertEqual(next_lecture_slot(datetime(2026,9,28,23,32),[0],[31]),datetime(2026,9,29,0,31))
+    def test_fixed_humanity_and_independent_science_slots(self):
         with tempfile.TemporaryDirectory() as tmp:
             jobs=Jobs();engine=Automation(jobs,Vault(),directory=Path(tmp));engine.timer.stop()
-            engine.save('lecture',{'enabled':True,'hours':[14],'minutes':[31],'book':False})
-            engine.save('science',{'enabled':True,'hours':[15],'minutes':[1]})
+            engine.save('lecture',{'enabled':True,'hours':[8],'minutes':[1,31],'book':False})
+            engine.save('science',{'enabled':True,'hours':[14],'minutes':[31]})
             with patch.object(Path,'exists',return_value=True):
-                for hour,minute in ((14,1),(14,31),(14,31),(15,1),(15,31)):
-                    engine.tick(datetime(2026,9,28,hour,minute))
-            self.assertEqual([call[0] for call in jobs.calls],['lecture-clock','science-daily'])
+                for hour,minute in ((8,1),(14,31),(15,1),(15,16),(15,16),(15,31)):
+                    engine.tick(datetime(2026,9,29,hour,minute))
+            self.assertEqual([call[0] for call in jobs.calls],['science-daily','lecture-clock','lecture-clock'])
+            self.assertEqual([c[-1]['slot'] for c in jobs.calls if c[0]=='lecture-clock'],['2026-09-29T15:16','2026-09-29T15:31'])
             restarted=Automation(jobs,Vault(),directory=Path(tmp));restarted.timer.stop()
-            restarted.tick(datetime(2026,9,28,15,2))
-            self.assertEqual(len(jobs.calls),2)
+            restarted.tick(datetime(2026,9,29,15,32))
+            self.assertEqual(len(jobs.calls),3)
 
     def test_lecture_restart_dedup_busy_and_no_catchup_storm(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -101,17 +96,17 @@ class AutomationTests(unittest.TestCase):
             engine.timer.stop()
             engine.save('lecture', {'enabled': True, 'hours': [8], 'book': False})
             with patch.object(Path, 'exists', return_value=True):
-                engine.tick(datetime(2026, 9, 16, 8, 1))
+                engine.tick(datetime(2026, 9, 16, 15, 16))
             self.assertEqual(len(jobs.calls), 1)
             restarted = Automation(jobs, Vault(), directory=Path(tmp))
             restarted.timer.stop()
-            restarted.tick(datetime(2026, 9, 16, 8, 2))
+            restarted.tick(datetime(2026, 9, 16, 15, 17))
             self.assertEqual(len(jobs.calls), 1)
             jobs.active['other'] = {'module': 'lecture'}
-            restarted.tick(datetime(2026, 9, 16, 8, 31))
+            restarted.tick(datetime(2026, 9, 16, 15, 31))
             self.assertEqual(len(jobs.calls), 1)
             jobs.active.clear()
-            restarted.tick(datetime(2026, 9, 16, 8, 35))
+            restarted.tick(datetime(2026, 9, 16, 15, 35))
             self.assertEqual(len(jobs.calls), 1)
             restarted.disable('lecture')
             self.assertFalse(restarted.enabled('lecture'))
@@ -149,9 +144,25 @@ class AutomationTests(unittest.TestCase):
                     first.save(kind, {'enabled': True, 'book': True, 'stopOnUnknown': enabled})
                     restarted = Automation(jobs, Vault(), directory=Path(tmp)); restarted.timer.stop()
                     with patch.object(Path, 'exists', return_value=True):
-                        restarted.tick(datetime(2026, 9, 28, 14, 1))
+                        restarted.tick(datetime(2026, 9, 28, 15, 16) if kind=='lecture' else datetime(2026, 9, 28, 14, 1))
                     self.assertEqual(len(jobs.calls), 1)
                     self.assertIs(jobs.calls[0][-1]['stopOnUnknown'], enabled)
+
+    def test_macos_evening_uses_same_calendar_import_as_manual(self):
+        from unittest.mock import Mock
+        with tempfile.TemporaryDirectory() as tmp:
+            engine = Automation(Jobs(), Vault(), directory=Path(tmp)); engine.timer.stop()
+            parent = Mock(_calendar_import_running=False)
+            with patch('ucasdesk.automation.sys.platform', 'darwin'), patch.object(engine, 'parent', return_value=parent):
+                engine.tick(datetime(2026,9,29,22,0))
+                engine.tick(datetime(2026,9,29,22,0,5))
+                self.assertEqual(parent.import_calendar_week.call_count, 1)
+                parent._calendar_import_running=True
+                engine.tick(datetime(2026,9,30,22,0))
+                self.assertEqual(parent.import_calendar_week.call_count, 1)
+                parent._calendar_import_running=False
+                engine.tick(datetime(2026,9,30,22,0,10))
+                self.assertEqual(parent.import_calendar_week.call_count, 2)
 
     def test_daily_filters_ended_signed_and_duplicate_courses(self):
         course = {'id': '1234567', 'classBeginTime': '2026-09-16 10:00:00',

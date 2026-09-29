@@ -30,7 +30,7 @@ test('reopening seats does not masquerade as first publication; failed checks do
   assert.equal(result.newlyAvailable.length, 0);
   const text = report(result.state);
   assert.match(text, /失败：1/);
-  assert.match(text, /至少一周/);
+  assert.match(text, /15:16、15:31/);
 });
 
 test('other campuses retained but excluded from Yanqi histogram', () => {

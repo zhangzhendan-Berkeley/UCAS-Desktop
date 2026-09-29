@@ -26,3 +26,19 @@ test('unknown dates, repeated pages and page limits fail instead of claiming com
 test('cutoff is Beijing midnight even if machine uses UTC',()=>{
  assert.equal(beijingDate(new Date('2026-09-18T16:01:00Z')),today);
 });
+
+
+test('known row before a new row does not truncate the page; fully known next page stops', async()=>{
+ const old=row('2026-09-25','old'), fresh=row('2026-09-24','new'), boundary=row('2026-09-23','boundary');
+ const s=source([[old,fresh],[boundary],[row('2026-09-22','hidden')]]);
+ const r=await collectSchedule(s.read,s.advance,{today,knownKeys:new Set(['old','boundary']),rowKey:r=>r.title});
+ assert.equal(r.pages,2);assert.equal(r.stopReason,'known-page');assert.equal(r.complete,false);
+ assert.deepEqual(r.rows.map(x=>x.title),['old','new','boundary']);
+});
+
+test('empty history establishes a full baseline and optional boundary does not affect full refresh', async()=>{
+ for(const knownKeys of [null,new Set()]) {
+  const s=source([[row('2026-09-25')],[row('2026-09-24')],[row('2026-09-18')]]);
+  const r=await collectSchedule(s.read,s.advance,{today,knownKeys});assert.equal(r.pages,3);assert.equal(r.complete,true);
+ }
+});

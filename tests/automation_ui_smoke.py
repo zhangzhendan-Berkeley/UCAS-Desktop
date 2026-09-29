@@ -58,28 +58,30 @@ with isolated_keychain(), tempfile.TemporaryDirectory() as tmp:
                 window.lecture_stop_unknown.setChecked(True)
                 window.lecture_clock.setChecked(True)
                 window.lecture_book.setChecked(True)
-                window.lecture_hours.setText('8,9,18')
                 window.save_lecture_plan()
-                assert window.automation.config['lecture']['hours'] == [8, 9, 18]
+                assert window.automation.config['lecture']['hours'] == [15]
+                assert window.automation.config['lecture']['minutes'] == [16,31]
                 assert window.automation.config['lecture']['book']
                 assert window.automation.config['lecture']['stopOnUnknown'] is True
                 assert window.automation.config['science']['stopOnUnknown'] is False
-                window.lecture_minutes[1].setChecked(False)
-                window.lecture_minutes[31].setChecked(True)
+                assert not hasattr(window, 'lecture_hours')
                 window.science_daily.setChecked(True)
                 window.science_hours.setText('14,15')
                 window.science_minutes[31].setChecked(True)
                 window.save_lecture_plan()
-                assert window.automation.config['lecture']['minutes']==[31]
                 assert window.automation.config['science']['minutes']==[1,31]
                 assert window.automation.config['science']['hours']==[14,15]
                 window.disable_plan('science')
                 assert window.lecture_clock.isChecked() and not window.science_daily.isChecked()
                 window.science_daily.setChecked(True)
-                window.lecture_minutes[31].setChecked(False)
+                window.science_minutes[1].setChecked(False)
+                window.science_minutes[31].setChecked(False)
                 window.save_lecture_plan()
-                assert window.automation.config['lecture']['minutes']==[]
-                assert '不会自动运行' in window.automation.description('lecture')
+                assert window.automation.config['science']['minutes']==[]
+                assert '不会自动运行' in window.automation.description('science')
+                for days in (14,30,7):
+                    window.calendar_range.setCurrentIndex(window.calendar_range.findData(days))
+                    assert window.settings['calendar_days'] == days
                 assert 'fixture-password' not in window.automation.path.read_text()
                 assert not errors, errors
                 window.show()

@@ -1,5 +1,5 @@
 """Persistent, wall-clock plans. The GUI owns timers; adapters own network work."""
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from PySide6.QtCore import QObject, QTimer, Signal
 from .core import DATA, ROOT, PYTHON, NODE, read_json, write_json, redact
 import sys
@@ -7,7 +7,7 @@ import sys
 
 def lecture_slot(now, hours, minutes=(1,)):
     """Only the current slot, with a two-minute wake-up grace; never replay a backlog."""
-    for minute in sorted(set(minutes) & {1, 31}):
+    for minute in sorted(set(minutes) & {1, 16, 31}):
         slot = now.replace(minute=minute, second=0, microsecond=0)
         if slot.hour in hours and 0 <= (now - slot).total_seconds() < 120:
             return slot.isoformat(timespec='minutes')
@@ -17,7 +17,7 @@ def lecture_slot(now, hours, minutes=(1,)):
 def next_lecture_slot(now, hours, minutes=(1,)):
     for offset in range(49):
         hour = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=offset)
-        for minute in sorted(set(minutes) & {1, 31}):
+        for minute in sorted(set(minutes) & {1, 16, 31}):
             candidate = hour.replace(minute=minute)
             if candidate > now and candidate.hour in hours:
                 return candidate
@@ -70,30 +70,23 @@ class Automation(QObject):
     def tick(self, now=None):
         if any(job.get('module') == 'module-install' for job in self.jobs.active.values()):
             return  # Do not start a worker while its component is being replaced.
+        supplied_now = now is not None
         now = now or datetime.now()
+        humanity_now = now if supplied_now else datetime.now(timezone(timedelta(hours=8))).replace(tzinfo=None)
         for kind in ('course', 'lecture', 'science'):
             if not self.enabled(kind):
                 continue
             try:
-                self.run_due(kind, now)
+                self.run_due(kind, humanity_now if kind == 'lecture' else now)
             except Exception as exc:
                 self.messages[kind] = redact(str(exc), self.vault.secret_values())
         if sys.platform == 'darwin' and now.hour == 22 and now.minute == 0 and self.calendar_sync_day != now.date():
             try:
-                from .macos_calendar import sync_tomorrow
-                activity = getattr(self.parent(), 'activity', None)
-                if activity is None:
-                    raise RuntimeError('本地日历同步尚未准备好')
-                from .activity import scope
-                course_scope, sep_scope = scope(self.vault, 'iclass'), scope(self.vault, 'sep')
+                parent = self.parent()
+                if parent is None or getattr(parent, '_calendar_import_running', False):
+                    return
                 self.calendar_sync_day = now.date()
-                def finished(result):
-                    self.messages['calendar'] = result[1]
-                    self.changed.emit()
-                def failed(error):
-                    self.messages['calendar'] = redact(str(error), self.vault.secret_values())
-                    self.changed.emit()
-                self.parent().background(lambda: sync_tomorrow(activity, course_scope, sep_scope), finished, failed)
+                parent.import_calendar_week()
             except Exception as exc:
                 self.messages['calendar'] = redact(str(exc), self.vault.secret_values())
         self.changed.emit()
@@ -134,7 +127,7 @@ class Automation(QObject):
                                 'preview': False})
             self.messages[kind] = f'{slot} 已启动科研讲座报名；结果见任务日志'
         else:
-            slot = lecture_slot(now, config.get('hours', list(range(24))), config.get('minutes', [1]))
+            slot = lecture_slot(now, [15], [16, 31])
             if not slot or self.state.get('lecture_slot') == slot:
                 return
             if active & {'lecture', 'lecture-clock', 'science-daily'}:
@@ -156,9 +149,10 @@ class Automation(QObject):
             return '后台计划：未启用'
         message = self.messages.get(kind, '已保存；应用运行时自动执行')
         if kind in ('lecture', 'science'):
-            hours = self.config[kind].get('hours', list(range(24)))
-            minutes = self.config[kind].get('minutes', [1])
-            due = next_lecture_slot(datetime.now(), hours, minutes)
+            hours = [15] if kind == 'lecture' else self.config[kind].get('hours', list(range(24)))
+            minutes = [16, 31] if kind == 'lecture' else self.config[kind].get('minutes', [1])
+            clock = datetime.now(timezone(timedelta(hours=8))).replace(tzinfo=None) if kind == 'lecture' else datetime.now()
+            due = next_lecture_slot(clock, hours, minutes)
             if due:
                 message += ' · 下次 ' + due.strftime('%m-%d %H:%M')
             else:

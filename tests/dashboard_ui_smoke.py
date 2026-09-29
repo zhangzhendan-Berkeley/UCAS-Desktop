@@ -104,6 +104,10 @@ with isolated_keychain(), tempfile.TemporaryDirectory() as tmp:
                     {'title':'昨日讲座','time':'2000-01-01 15:30-17:30','location':'雁栖湖','registrationStatus':'registered'}]})
                 assert '今日测试讲座' in window.lecture_today_text(kind)
                 assert '昨日讲座' not in window.lecture_today_text(kind)
+            window.activity_event('lecture', {'event':'lecture.calendar','kind':'humanity','scope':'incremental','rows':[
+                {'title':'增量新讲座','time':today+' 18:30-20:30','location':'雁栖湖','registrationStatus':'registered'}]})
+            merged = window.activity.get_snapshot(sep,'calendar-humanity')['payload']['rows']
+            assert {r['title'] for r in merged} == {'今日测试讲座','昨日讲座','增量新讲座'}
             assert '今日测试讲座' in window.home_cards[9].text()
             window.activity_event('lecture', {'event':'lecture.attendance','records':{'humanity':{'valid':0,'total':2},'science':{'valid':1,'total':1}}})
             assert '人文 0 次' in window.attendance_status.text() and '科研 1 次' in window.attendance_status.text()
@@ -124,7 +128,8 @@ with isolated_keychain(), tempfile.TemporaryDirectory() as tmp:
             assert log_state('成功 0 次，失败 1 次') == 'failed'
             assert log_state('{"event":"run.register.result","outcome":"registered"}') == 'success'
             assert all(check.isChecked() for check in window.days)
-            assert window.lecture_hours.text() == ','.join(map(str, range(24)))
+            assert not hasattr(window, 'lecture_hours')
+            assert window.science_hours.text() == ','.join(map(str, range(24)))
             window.show()
             window.resize(1450, 1200)
             app.processEvents()

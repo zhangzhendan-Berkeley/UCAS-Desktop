@@ -547,8 +547,6 @@ class Window(LecturesMixin, DashboardMixin, QMainWindow):
         self.lecture_clock.setChecked(clock.get('enabled', False))
         self.lecture_book = QCheckBox('同时自动报名符合筛选条件的雁栖湖讲座')
         self.lecture_book.setChecked(clock.get('book', False))
-        self.lecture_hours = QLineEdit(','.join(map(str, clock.get('hours', range(24)))))
-        self.lecture_hours.setPlaceholderText('0–23 的小时，用英文逗号分隔')
         science = self.automation.config.get('science', {})
         self.science_hours = QLineEdit(','.join(map(str, science.get('hours', range(24)))))
         self.science_hours.setPlaceholderText('0–23 的小时，用英文逗号分隔')
@@ -556,8 +554,8 @@ class Window(LecturesMixin, DashboardMixin, QMainWindow):
         self.lecture_stop_unknown.setChecked(clock.get('stopOnUnknown', False))
         self.science_stop_unknown = QCheckBox('科研：结果不明时暂停后续报名（可选）')
         self.science_stop_unknown.setChecked(science.get('stopOnUnknown', False))
-        self.lecture_minutes, self.science_minutes = {}, {}
-        for values, settings in ((self.lecture_minutes, clock), (self.science_minutes, science)):
+        self.science_minutes = {}
+        for values, settings in ((self.science_minutes, science),):
             for minute in (1, 31):
                 values[minute] = QCheckBox(f'每小时 {minute:02d} 分')
                 values[minute].setChecked(minute in settings.get('minutes', [1]))
@@ -568,7 +566,7 @@ class Window(LecturesMixin, DashboardMixin, QMainWindow):
         layout.addWidget(self.lecture_clock)
         layout.addWidget(self.lecture_book)
         layout.addWidget(self.lecture_stop_unknown)
-        layout.addLayout(row(label('人文检查小时'), self.lecture_hours, *self.lecture_minutes.values()))
+        layout.addWidget(label('人文讲座固定每天 15:16、15:31 检查（北京时间）；可关闭整个人文自动任务。', 'muted'))
         self.science_daily = QCheckBox('开启科研讲座查询与自动报名（仅雁栖湖；同一开始时间只报一场，优先人工智能相关）')
         self.science_daily.setChecked(self.automation.config.get('science', {}).get('enabled', False))
         layout.addWidget(self.science_daily)
@@ -579,7 +577,7 @@ class Window(LecturesMixin, DashboardMixin, QMainWindow):
                              button('停用科研任务', lambda: self.disable_plan('science'))))
         self.lecture_clock_status = label('', 'muted')
         layout.addWidget(self.lecture_clock_status)
-        layout.addWidget(label('两类讲座分别保存小时与 01 / 31 分开关；两个时点均不勾选时不轮询。设置需点击保存。电脑需保持运行，任务结果见“任务与日志”。', 'muted'))
+        layout.addWidget(label('人文固定每天 15:16 / 15:31；科研自定义小时与 01 / 31 分，两个时点均不勾选时不轮询。设置需点击保存。电脑需保持运行，任务结果见“任务与日志”。', 'muted'))
         layout.addWidget(label('下方同步显示今日讲座、听讲进度与提醒设置；报名成功后请按现场要求完成考勤。', 'banner'))
 
     def set_lecture_all_day(self, enabled):
@@ -591,10 +589,9 @@ class Window(LecturesMixin, DashboardMixin, QMainWindow):
 
     def save_lecture_plan(self):
         try:
-            plans = {}
+            plans = {'lecture': self.automation.config.get('lecture', {}) | {'enabled': self.lecture_clock.isChecked(), 'hours': [15], 'minutes': [16, 31]}}
             for kind, title, enabled, field, checks in (
-                ('lecture', '人文', self.lecture_clock.isChecked(), self.lecture_hours, self.lecture_minutes),
-                ('science', '科研', self.science_daily.isChecked(), self.science_hours, self.science_minutes)):
+                ('science', '科研', self.science_daily.isChecked(), self.science_hours, self.science_minutes),):
                 try:
                     hours = sorted({int(x.strip()) for x in field.text().replace('，', ',').split(',') if x.strip()})
                 except ValueError:

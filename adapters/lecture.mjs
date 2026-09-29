@@ -1,3 +1,4 @@
+import { bookingTraversal } from './lecture_booking_pages.mjs';
 import { configureWorkflowBrowser } from './browser_channel.mjs';
 import { createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -52,6 +53,7 @@ try {
   } else if (p.action === 'science-schedule') {
     await queryScienceSchedule(config, logger);
   } else {
+  Object.assign(config, bookingTraversal(config, logger));
   const rounds = p.scheduled ? Math.min(144, Math.max(1, Number(p.rounds || 12))) : 1;
   console.log(p.preview ? '仅检查候选讲座，不提交报名。' : '开始按所选星期与时段筛选并报名；浏览器中如出现邮箱验证，请手工完成。');
   for (let n = 0; n < rounds; n++) {
