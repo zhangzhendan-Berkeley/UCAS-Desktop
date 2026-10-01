@@ -56,14 +56,15 @@ try {
     try {await frame.waitForLoadState('domcontentloaded'); await frame.evaluate(mountEvaluation,{templates,batch:p.batch===true});}
     catch(e){if(!frame.page().isClosed() && !String(e.message).includes('context was destroyed')) console.log('评教辅助面板暂未加载，可刷新页面重试。');}
   };
-  context.on('page',child=>child.on('framenavigated',attach));
-  page.on('framenavigated',attach);
   await page.goto(target.href,{waitUntil:'domcontentloaded'});
   if(new URL(page.url()).origin!=='https://xkcts.ucas.ac.cn:8443' || !new URL(page.url()).pathname.startsWith('/evaluate/'+p.kind)) throw new Error('评估入口未进入预期列表；请重试登录。');
   const count=await page.locator('a,button,input[type=button]').evaluateAll(els=>els.filter(e=>(e.value||e.textContent).trim()==='评估').length);
   console.log(JSON.stringify({event:'evaluation.list',kind:p.kind,pendingOnPage:count}));
   if(p.audit) console.log('只读检查完成；没有打开问卷或提交评价。');
   else {
+    // Inspect the list before batch navigation can open the first questionnaire.
+    context.on('page',child=>child.on('framenavigated',attach));
+    page.on('framenavigated',attach);
     await attach(page.mainFrame()); await revealSep(page);
     console.log('评教窗口已打开。首次填好问卷后点击“记住本页答案”；以后自动填入匹配题目。请核对并手动完成验证码和学校保存按钮。关闭所有评教窗口即可结束任务。');
     await new Promise(resolve=>{context.on('close',resolve); context.on('page',child=>child.on('close',()=>{if(!context.pages().length) resolve();})); page.on('close',()=>{if(!context.pages().length) resolve();});});
