@@ -49,6 +49,18 @@ with isolated_keychain(), tempfile.TemporaryDirectory() as tmp:
                 fields[0].setText('fixture-user')
                 fields[1].setText('fixture-password')
                 fields[2].setChecked(True)
+            assert window.nav.item(9).text() == '教师与课程评估'
+            assert not window.evaluation_batch.isChecked()
+            with patch.object(window, 'start_job', return_value='fixture-evaluation') as evaluation:
+                window.evaluation_batch.setChecked(True)
+                window.run_evaluation('teacher')
+                args = evaluation.call_args.args
+                assert args[0] == 'evaluation'
+                assert args[4]['kind'] == 'teacher' and args[4]['batch'] is True
+                assert args[4]['username'] == 'fixture-user'
+            window.nav.setCurrentRow(9)
+            window.show_today_lectures()
+            assert window.nav.currentRow() == 2
             with patch.object(window.jobs, 'start', return_value='fixture') as start:
                 window.daily_enabled.setChecked(True)
                 window.save_daily_plan()

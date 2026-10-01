@@ -6,6 +6,8 @@
 
 ## 下载与安装（v0.5.4）
 
+源码分支的 `0.5.5-rc.1` 新增[教师与课程评估助手](docs/教师与课程评估.md)，当前为本地候选版；下方公开稳定版下载仍为 v0.5.4。
+
 本版统一提供 Windows、Mac Apple Silicon 与 Mac Intel 安装包。[v0.5.4 更新说明](docs/releases/v0.5.4.md)；[Issue #2 审核记录](docs/issue-2-review.md)。
 
 **Windows 普通用户：下载 [Windows x64 便携 ZIP](https://github.com/zhangzhendan-Berkeley/UCAS-Desktop/releases/tag/v0.5.4)**，全部解压后双击 `UCAS桌面助手.exe`。包含 Python、Node、慕课依赖和课表，无需自行安装开发环境。

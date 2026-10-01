@@ -11,6 +11,16 @@
 
 ## 直接采用与适配
 
+### 教师与课程评估参考（2026-10-01）
+
+从 [Littlefish12138/UCAS-on-Github 教务系统合集](https://github.com/Littlefish12138/UCAS-on-Github/tree/main/教务系统相关) 发现并核验：
+
+- [Chess9380/ucas-eval-extension](https://github.com/Chess9380/ucas-eval-extension/tree/dc6f17d22224ae7742cdbcdbdf8235b4407c2468)（MIT）：参考研究生教师/课程评估页面、问卷字段与待评估/修改评估区分方式。
+- [Jinddddd/ucas_evaluation_script](https://github.com/Jinddddd/ucas_evaluation_script/tree/ff37c4a8c8b32ae417afcdc9879dc82eae0088bd)：参考研究生评教 URL 和验证码交互；该快照无独立 LICENSE，没有复制或捆绑其脚本、默认评语。
+- [Wu-Yijun/UCAS-Tool-Set](https://github.com/Wu-Yijun/UCAS-Tool-Set/tree/bfba5ebfad86874e0fff211c258493e1e2982b9d)（MIT）：核验后发现其评教功能指向本科 `bkkcpj`，没有接入研究生模块。
+
+`adapters/evaluation*.mjs` 为本项目重新编写，复用已有 SEP 登录依赖，以实际表单的题目及选项匹配用户保存的答案；不是上述扩展的打包副本。保留各作者参考贡献，不声称上游学校接口由本项目发明。实测范围和限制见[使用说明](docs/教师与课程评估.md)。
+
 完整固定提交见 [`modules.json`](modules.json)，日期为 2026-09-16 核验时的快照，并非长期可用保证。
 
 | 项目与作者 | 使用范围 | 固定版本 | 已见许可信息与公开方式 |

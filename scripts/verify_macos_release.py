@@ -47,6 +47,7 @@ def main():
     run([node, 'tests/lecture_portal_smoke.mjs'])
     run([node, 'tests/lecture_campus_smoke.mjs'])
     run([node, 'tests/lecture_booking_pages_smoke.mjs'])
+    run([node, 'tests/evaluation_smoke.mjs'])
     run([node, 'tests/lecture_captcha_smoke.mjs'])
     (target / 'adapters/mooc_helpers.mjs').unlink()
     (target / 'vendor/ucas-humanity-lecture-bot/dist/src/background.js').unlink()

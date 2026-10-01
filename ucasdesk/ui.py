@@ -155,7 +155,7 @@ class Window(LecturesMixin, DashboardMixin, QMainWindow):
         side.addSpacing(28)
         self.nav = QListWidget()
         self.nav.setObjectName('navigation')
-        self.nav.addItems(['概览', '课程签到', '人文/科研讲座', '国科大在线', '选课规划', '自动选课', '任务与日志', '设置与更新', '个人信息'])
+        self.nav.addItems(['概览', '课程签到', '人文/科研讲座', '国科大在线', '选课规划', '自动选课', '任务与日志', '设置与更新', '个人信息', '教师与课程评估'])
         side.addWidget(self.nav)
         self.runtime_hint = label(f'本地运行 · v{__version__}\n关闭窗口后托盘运行\n右键托盘可退出程序', 'sideText')
         side.addWidget(self.runtime_hint)
@@ -172,6 +172,7 @@ class Window(LecturesMixin, DashboardMixin, QMainWindow):
         self.build_jobs()
         self.build_settings()
         self.build_profile()
+        self.build_evaluation()
         self.build_today_lectures(self.lecture_layout)
         enable_copy(self)
         self.nav.currentRowChanged.connect(self.navigate)
@@ -495,11 +496,11 @@ class Window(LecturesMixin, DashboardMixin, QMainWindow):
         self.statusBar().showMessage(f'查询到 {len(courses)} 节课程 / 排课。')
 
     def start_job(self, module, title, program, args, payload, open_logs=True):
-        if module in ('lecture', 'selection', 'mooc'):
+        if module in ('lecture', 'selection', 'mooc', 'evaluation'):
             if any(item.get('module') == 'module-install' for item in self.jobs.active.values()):
                 raise ValueError('正在修复组件，请完成后再启动任务。')
             from .portable import ready
-            entry = next(m for m in read_json(ROOT / 'modules.json', []) if m['id'] == module)
+            entry = next(m for m in read_json(ROOT / 'modules.json', []) if m['id'] == ('lecture' if module == 'evaluation' else module))
             if not ready(ROOT, entry):
                 if (ROOT / 'modules-downloads.json').is_file():
                     self.nav.setCurrentRow(7)
@@ -513,6 +514,32 @@ class Window(LecturesMixin, DashboardMixin, QMainWindow):
             self.nav.setCurrentRow(6)
             self.select_job(job_id)
         return job_id
+
+    def build_evaluation(self):
+        layout = self.page('教师与课程评估', '复用 SEP 账号打开当前学期评教；答案模板按账号保存在本机。')
+        intro = label('① 打开教师或课程评估，选择需要填写的问卷。\n\n'
+                      '② 首次填写后，在浏览器左下角点击“记住本页答案”。两种问卷分别记忆。\n\n'
+                      '③ 后续问卷会自动填写题目、选项完全匹配的空白项；你仍可逐题修改。\n\n'
+                      '④ 核对当前课程和老师，输入验证码，点击学校页面的保存按钮。')
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+        self.evaluation_batch = QCheckBox('返回列表后自动打开本页下一个待评估项目（不打开“修改评估”）')
+        layout.addWidget(self.evaluation_batch)
+        layout.addLayout(row(button('打开教师评估', lambda: self.run_evaluation('teacher')),
+                             button('打开课程评估', lambda: self.run_evaluation('course'))))
+        layout.addWidget(label('按自己的实际体验填写。没有匹配模板的题目会留空；验证码不会保存，程序不会自动点击提交。\n'
+                               '评教属于交互操作，打开后会显示浏览器。关掉全部评教窗口即可结束；也可在“任务与日志”停止。', 'muted'))
+        layout.addStretch()
+
+    def run_evaluation(self, kind):
+        try:
+            if any(item.get('module') == 'evaluation' for item in self.jobs.active.values()):
+                raise ValueError('已有评教窗口正在使用，请先关闭窗口或停止原评教任务。')
+            payload = self.account('sep') | {'kind': kind, 'batch': self.evaluation_batch.isChecked()}
+            self.start_job('evaluation', '教师评估' if kind == 'teacher' else '课程评估', NODE,
+                           [ROOT / 'adapters/evaluation.mjs'], payload)
+        except Exception as exc:
+            self.error(str(exc))
 
     def schedule_courses(self):
         try:
@@ -1033,7 +1060,7 @@ class Window(LecturesMixin, DashboardMixin, QMainWindow):
         layout.addWidget(group)
 
     def install_portable_modules(self):
-        if any(item.get('module') in ('module-install','lecture','lecture-clock','science-daily','selection','mooc') for item in self.jobs.active.values()):
+        if any(item.get('module') in ('module-install','lecture','lecture-clock','science-daily','selection','mooc','evaluation') for item in self.jobs.active.values()):
             self.error('相关功能仍在运行，请等任务结束或停止后再修复组件。')
             return
         self.start_job('module-install', '下载并启用外部组件', PYTHON,

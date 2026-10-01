@@ -556,7 +556,7 @@ class DashboardMixin:
         return title + '\n' + '\n'.join(f'{r.get("time", "时间未知")} · {r["title"]}\n{r.get("location") or "地点未提供"}' for r in rows)
 
     def show_today_lectures(self):
-        self.nav.setCurrentRow(9)
+        self.nav.setCurrentRow(2)
 
     def activity_event(self, job_id, event):
         job = self.jobs.active.get(job_id, {})
