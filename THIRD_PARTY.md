@@ -11,6 +11,8 @@
 
 ## 直接采用与适配
 
+2026-10-06 原选课规划器仓库返回 404。`assets/upstream/` 保留此前发布版使用的原始 MIT 源码 ZIP（含原 LICENSE），字节与 `modules-downloads.json` 的 SHA256 完全一致。安装器使用本仓库固定提交的镜像，课程数据和上游版本不变。
+
 ### 教师与课程评估参考（2026-10-01）
 
 从 [Littlefish12138/UCAS-on-Github 教务系统合集](https://github.com/Littlefish12138/UCAS-on-Github/tree/main/教务系统相关) 发现并核验：

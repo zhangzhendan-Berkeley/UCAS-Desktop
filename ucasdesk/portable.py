@@ -74,6 +74,11 @@ def download(url, expected=None):
 
 
 def archive_url(module):
+    # Byte-identical MIT archive retained when upstream became unavailable.
+    if module['id'] == 'planner' and module['commit'] == 'd7d12d48853bd6f30ca517bcf1716e1c39ab200e':
+        return ('https://raw.githubusercontent.com/zhangzhendan-Berkeley/UCAS-Desktop/'
+                '844014febcdfec5d66c641f9b2fda773094fff19/assets/upstream/'
+                'planner-d7d12d48853bd6f30ca517bcf1716e1c39ab200e.zip')
     match = re.fullmatch(r'https://github.com/([\w.-]+/[\w.-]+?)(?:\.git)?', module['source'])
     if not match or not re.fullmatch('[0-9a-f]{40}', module['commit']):
         raise ValueError('模块来源或固定提交无效')

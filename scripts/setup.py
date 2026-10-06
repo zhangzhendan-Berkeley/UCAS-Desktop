@@ -117,7 +117,7 @@ def main():
         if module.get('external_opt_in') and not args.with_external_modules:
             print(f"跳过可选外部模块：{module['name']}", flush=True)
             continue
-        if (ROOT / module['path']).is_dir() and not (ROOT / module['path'] / '.git').exists():
+        if (module['id'] == 'planner' or (ROOT / module['path']).is_dir()) and not (ROOT / module['path'] / '.git').exists():
             from ucasdesk.portable import install_module
             install_module(ROOT, module, None, force=True)
             continue
