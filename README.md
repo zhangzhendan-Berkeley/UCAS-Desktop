@@ -6,7 +6,7 @@
 
 ## 下载与安装（v0.5.4）
 
-源码分支的 `0.5.5-rc.1` 新增[教师与课程评估助手](docs/教师与课程评估.md)，当前为本地候选版；下方公开稳定版下载仍为 v0.5.4。
+源码分支的 `0.5.5-rc.1` 新增[教师与课程评估助手](docs/教师与课程评估.md)，[下载候选版](https://github.com/zhangzhendan-Berkeley/UCAS-Desktop/releases/tag/v0.5.5-rc.1)；下方稳定版下载仍为 v0.5.4。
 
 本版统一提供 Windows、Mac Apple Silicon 与 Mac Intel 安装包。[v0.5.4 更新说明](docs/releases/v0.5.4.md)；[Issue #2 审核记录](docs/issue-2-review.md)。
 
