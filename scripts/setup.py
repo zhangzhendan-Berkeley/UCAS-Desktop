@@ -118,8 +118,10 @@ def main():
             print(f"跳过可选外部模块：{module['name']}", flush=True)
             continue
         if (module['id'] == 'planner' or (ROOT / module['path']).is_dir()) and not (ROOT / module['path'] / '.git').exists():
-            from ucasdesk.portable import install_module
-            install_module(ROOT, module, None, force=True)
+            # Dependencies were installed into the venv above, not the bootstrap Python.
+            run([python, '-c', 'import json,sys; from pathlib import Path; '
+                 'from ucasdesk.portable import install_module; '
+                 'install_module(Path.cwd(),json.loads(sys.argv[1]),None,force=True)', json.dumps(module)])
             continue
         repo = checkout(module)
         if module['id'] == 'lecture':
