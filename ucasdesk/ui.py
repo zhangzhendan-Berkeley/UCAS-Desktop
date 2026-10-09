@@ -879,6 +879,19 @@ class Window(LecturesMixin, DashboardMixin, QMainWindow):
         self.select_rounds = QSpinBox()
         self.select_rounds.setRange(1, 240)
         self.select_rounds.setValue(30)
+        self.public_watch = QCheckBox('实验性公开课表守课（未实测，谨慎使用）')
+        self.public_term = QLineEdit()
+        self.public_term.setPlaceholderText('公开课表的学期 termId（必填，不是学期名称）')
+        self.public_initial = QCheckBox('首次公开未满时核验一次')
+        self.public_execute = QCheckBox('信号触发后执行选课（默认仅监控）')
+        self.public_fallback = QSpinBox()
+        self.public_fallback.setRange(0, 1440)
+        self.public_fallback.setValue(60)
+        self.public_fallback.setSuffix(' 分钟（0 关闭，启用至少 10 分钟）')
+        layout.addLayout(row(self.public_watch, self.public_term))
+        layout.addLayout(row(self.public_initial, self.public_execute))
+        layout.addLayout(row(label('公开未满兜底核验'), self.public_fallback))
+        layout.addWidget(label('公开守课使用下方查询间隔、持续至手动停止，不与定时/直接轮询叠加。修改课程或学期需先停止再启动；人数下降不代表本人可选。', 'muted'))
         layout.addLayout(row(self.select_timed, self.select_time))
         layout.addLayout(row(self.select_repeat, label('间隔'), self.select_interval, label('最多'), self.select_rounds, label('轮')))
         layout.addWidget(label('有空位时识别验证码并提交；成功以课程进入预选列表为准。触发限流、提交结果不明或其他拒绝时会停止相应任务。', 'banner'))
@@ -935,7 +948,16 @@ class Window(LecturesMixin, DashboardMixin, QMainWindow):
             if self.planner:
                 payload['course_semesters'] = {code: '|'.join(sorted({s.semester for s in course.schedules}))
                     for code in codes if (course := self.planner.catalog.resolve(code))}
-            self.start_job('selection', f'选课{"预览" if preview else "任务"} · {len(codes)} 门', PYTHON, [ROOT / 'adapters/selection_worker.py'], payload)
+            worker = ROOT / 'adapters/selection_worker.py'
+            if self.public_watch.isChecked():
+                if preview or self.select_timed.isChecked():
+                    raise ValueError('公开守课请使用开始按钮，取消定时；默认仅监控不提交。')
+                if not self.public_term.text().strip():
+                    raise ValueError('请填写公开课表学期 termId。')
+                payload.update(term=self.public_term.text().strip(), initial=self.public_initial.isChecked(),
+                    watch_execute=self.public_execute.isChecked(), fallback=self.public_fallback.value()*60)
+                worker = ROOT / 'adapters/public_watch_worker.py'
+            self.start_job('selection', f'选课{"预览" if preview else "任务"} · {len(codes)} 门', PYTHON, [worker], payload)
         except Exception as exc:
             self.error(str(exc))
 

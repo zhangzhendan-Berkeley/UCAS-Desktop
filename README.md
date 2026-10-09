@@ -8,7 +8,10 @@
 
 源码分支的 `0.5.5-rc.1` 新增[教师与课程评估助手](docs/教师与课程评估.md)，[下载候选版](https://github.com/zhangzhendan-Berkeley/UCAS-Desktop/releases/tag/v0.5.5-rc.1)；下方稳定版下载仍为 v0.5.4。
 
-本版统一提供 Windows、Mac Apple Silicon 与 Mac Intel 安装包。[v0.5.4 更新说明](docs/releases/v0.5.4.md)；[Issue #2 审核记录](docs/issue-2-review.md)。
+本版统一提供 Windows、Mac Apple Silicon 与 Mac Intel 安装包。
+
+> 选课系统公开守课为实验性功能，默认关闭。本版本尚未在当前开放选课系统和真实账号上端到端验证，公开人数不代表本人可选；请谨慎使用，提交前务必核对 SEP 预选列表。
+[v0.5.4 更新说明](docs/releases/v0.5.4.md)；[Issue #2 审核记录](docs/issue-2-review.md)。
 
 **Windows 普通用户：下载 [Windows x64 便携 ZIP](https://github.com/zhangzhendan-Berkeley/UCAS-Desktop/releases/tag/v0.5.4)**，全部解压后双击 `UCAS桌面助手.exe`。包含 Python、Node、慕课依赖和课表，无需自行安装开发环境。
 

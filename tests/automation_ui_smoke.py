@@ -49,6 +49,17 @@ with isolated_keychain(), tempfile.TemporaryDirectory() as tmp:
                 fields[0].setText('fixture-user')
                 fields[1].setText('fixture-password')
                 fields[2].setChecked(True)
+            assert not window.public_watch.isChecked() and not window.public_execute.isChecked()
+            with patch.object(window, 'start_job', return_value='fixture-watch') as watch_job:
+                window.course_codes.setPlainText('180081050100P1001H')
+                window.public_watch.setChecked(True)
+                window.public_term.setText('fixture-term')
+                window.run_selection(False)
+                args = watch_job.call_args.args
+                assert args[0] == 'selection'
+                assert args[3][0].name == 'public_watch_worker.py'
+                assert args[4]['term'] == 'fixture-term' and args[4]['watch_execute'] is False
+                window.public_watch.setChecked(False)
             assert window.nav.item(9).text() == '教师与课程评估'
             assert not window.evaluation_batch.isChecked()
             with patch.object(window, 'start_job', return_value='fixture-evaluation') as evaluation:

@@ -27,7 +27,7 @@ class Tee(io.StringIO):
         return super().write(value)
 
 
-def run(config):
+def run(config, on_outcome=lambda code, outcome: None):
     codes = list(dict.fromkeys(config['codes']))
     if not codes or any(not re.fullmatch(r'[A-Za-z0-9-]{8,30}', c) for c in codes):
         raise ValueError('课程编码格式不正确，请从 SEP 复制完整编码。')
@@ -57,6 +57,7 @@ def run(config):
                 state = prepare_course(driver, config, code, flow=flow,
                     already_selected=upstream.course_already_selected, login=login_sep, budget=budget)
                 if state == 'already-selected':
+                    on_outcome(code, 'already-selected')
                     print(f'{code}：已在预选列表，不重复提交。', flush=True)
                     pending.remove(code)
                     continue
@@ -64,6 +65,7 @@ def run(config):
                     print(f'{code}：' + ('可选' if state == 'available' else '已满或不可选') + '（仅预览，未提交）', flush=True)
                     pending.remove(code)
                 elif state == 'unavailable':
+                    on_outcome(code, 'unavailable')
                     print(f'{code}：已满或不可选，本轮未提交。', flush=True)
                 else:
                     capture = Tee()
@@ -71,13 +73,17 @@ def run(config):
                         success = run_course_selection(driver, code, poll_interval=1)
                     output = capture.getvalue()
                     if success:
+                        on_outcome(code, 'success')
                         print(json.dumps({'event': 'selection.success', 'id': code, 'title': code,
                             'semester': config.get('course_semesters', {}).get(code, '')}, ensure_ascii=False), flush=True)
                         pending.remove(code)
                     elif not confirmed_full(output, code):
+                        on_outcome(code, 'unknown')
                         print(f'{code}：非满员失败或结果未知，不再重试。', flush=True)
                         failed.append(code)
                         pending.remove(code)
+                    else:
+                        on_outcome(code, 'unavailable')
                 upstream.return_to_course_home(driver, driver.current_window_handle, interval=1)
                 time.sleep(3)
             if not pending:
@@ -93,7 +99,13 @@ def run(config):
 
 if __name__ == '__main__':
     try:
-        sys.exit(run(json.load(sys.stdin)))
+        config = json.load(sys.stdin)
+        outcomes = {}
+        status = run(config, on_outcome=lambda code, outcome: outcomes.update({code: outcome}))
+        if config.get('report_outcome'):
+            for code, outcome in outcomes.items():
+                print(json.dumps({'event': 'selection.outcome', 'id': code, 'outcome': outcome}), flush=True)
+        sys.exit(status)
     except RateLimitedError as exc:
         print(f'已停止：{exc}', flush=True)
         sys.exit(3)
