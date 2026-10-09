@@ -4,21 +4,21 @@
 
 面向国科大集中教学场景的 **Windows / macOS / Linux 桌面集成工具**：把轻新课堂签到、讲座预约、选课规划、选课自动化及国科大在线视频/文档任务放在同一界面，支持系统托盘后台运行。
 
-## 下载与安装（v0.5.4）
+## 下载与安装（v0.5.5）
 
-源码分支的 `0.5.5-rc.1` 新增[教师与课程评估助手](docs/教师与课程评估.md)，[下载候选版](https://github.com/zhangzhendan-Berkeley/UCAS-Desktop/releases/tag/v0.5.5-rc.1)；下方稳定版下载仍为 v0.5.4。
+本版新增[教师与课程评估助手](docs/教师与课程评估.md)和实验性公开课表守课；[下载 v0.5.5](https://github.com/zhangzhendan-Berkeley/UCAS-Desktop/releases/tag/v0.5.5)。
 
 本版统一提供 Windows、Mac Apple Silicon 与 Mac Intel 安装包。
 
 > 选课系统公开守课为实验性功能，默认关闭。本版本尚未在当前开放选课系统和真实账号上端到端验证，公开人数不代表本人可选；请谨慎使用，提交前务必核对 SEP 预选列表。
-[v0.5.4 更新说明](docs/releases/v0.5.4.md)；[Issue #2 审核记录](docs/issue-2-review.md)。
+[v0.5.5 更新说明](docs/releases/v0.5.5.md)；[Issue #2 审核记录](docs/issue-2-review.md)。
 
-**Windows 普通用户：下载 [Windows x64 便携 ZIP](https://github.com/zhangzhendan-Berkeley/UCAS-Desktop/releases/tag/v0.5.4)**，全部解压后双击 `UCAS桌面助手.exe`。包含 Python、Node、慕课依赖和课表，无需自行安装开发环境。
+**Windows 普通用户：下载 [Windows x64 便携 ZIP](https://github.com/zhangzhendan-Berkeley/UCAS-Desktop/releases/tag/v0.5.5)**，全部解压后双击 `UCAS桌面助手.exe`。包含 Python、Node、慕课依赖和课表，无需自行安装开发环境。
 
 - 首次使用讲座/选课，或组件报错：进入 **设置与更新 → 检查并修复功能组件**。按本版固定版本下载、构建、验证，成功才替换；原组件自动备份。修复过程中不启动相关任务。
 - **从旧版升级**：先从托盘退出新旧程序，解压新版到新文件夹，双击新版的 **迁移旧版数据.cmd**，选择旧版文件夹。账号、课表、任务配置、慕课登录状态一并保留；旧安装不变。Windows 密码须在同一电脑、同一 Windows 用户下读取。
 - 浏览器需安装 Edge 或 Chrome；首次 SEP 查询可能联网下载匹配的驱动。详见 [便携版说明](docs/便携版说明.md)。
-- **macOS 普通用户**：下载 [Mac 独立版](https://github.com/zhangzhendan-Berkeley/UCAS-Desktop/releases/tag/v0.5.4)，按芯片选择 arm64（Apple Silicon）或 x64（Intel）。解压将 `.app` 拖到“应用程序”，无需 Python/Node/Xcode。保留课程和讲座同步到 iCloud UCAS 日历，详见 [Mac 便携版与日历说明](docs/macOS便携版说明.md)。
+- **macOS 普通用户**：下载 [Mac 独立版](https://github.com/zhangzhendan-Berkeley/UCAS-Desktop/releases/tag/v0.5.5)，按芯片选择 arm64（Apple Silicon）或 x64（Intel）。解压将 `.app` 拖到“应用程序”，无需 Python/Node/Xcode。保留课程和讲座同步到 iCloud UCAS 日历，详见 [Mac 便携版与日历说明](docs/macOS便携版说明.md)。
 - 源码安装：[macOS](docs/macOS安装.md)、[Linux](docs/Linux安装.md)。源码 ZIP 不包含运行环境；`build_macos_app.py` 是本地源码启动器，独立发行包使用 `build_macos_release.py`。
 
 ### 本版修复
@@ -27,7 +27,7 @@
 - 修复历史满员记录永久阻止报名的问题；同轮逐场处理所有符合条件的候选，每场成功立即保存，已预约的场次不会重复提交。
 - 人文自动任务增量翻页：完整检查当前页，遇到整页已见记录再停止；科研仍查到今天之前或最后一页。手动“检查候选讲座 / 立即报名一轮”保留全量查询。
 - Mac 概览可选择 **一周 / 两周 / 一个月（30 天）** 同步到 iCloud UCAS，选择自动保存；手动同步、讲座页入口及每天 22:00 自动同步共用此范围。
-- Windows、Mac Apple Silicon 和 Intel 使用同一版本。[完整说明与验证范围](docs/releases/v0.5.4.md)。
+- Windows、Mac Apple Silicon 和 Intel 使用同一版本。[完整说明与验证范围](docs/releases/v0.5.5.md)。
 
 ![应用首页](docs/desktop-dashboard.png)
 
@@ -40,6 +40,7 @@
 | 人文讲座预约 | 仅雁栖湖，按星期/开始时段筛选、报名、每天 15:16 / 15:31 检查及发布时间观察 | 可选外部模块；需要 SEP 登录，有时需要邮箱验证 |
 | 选课规划 | 分类配色、多条件查询、课程详情、备选、周课表、冲突检测、已选同步与勾选导入抢课 | 上游 2026 秋季课表快照，需按学期更新；规划不是实际选课 |
 | 自动选课 | 指定课程、定时开始、满员后有界轮询、预选结果核对 | 可选外部模块；使用共享 SEP 账号；必要时手工完成验证，不能保证抢到名额 |
+| 公开课表守课（实验性） | 不登录查询公开人数，人数下降后可触发一次个人选课核验 | 默认关闭；选课系统未实测，公开人数不代表本人可选，谨慎使用 |
 | 国科大在线 | 已适配英语慕课的视频、PDF 处理及剩余任务检查 | **不自动完成测验、作业或考试，不承诺整门课自动通过**；基于 2026 春季页面 |
 | 后台与手机 | 关闭/最小化进托盘、状态日志、手机只读面板 | 电脑必须保持运行；没有原生 iOS IPA |
 | 扩展与更新 | 固定版本清单、适配器接口、只读 API v1、上游更新检查 | 新版下载到暂存区，需人工验证后替换 |
